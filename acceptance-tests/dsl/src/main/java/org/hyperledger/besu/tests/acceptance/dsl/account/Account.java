@@ -27,6 +27,11 @@ import org.hyperledger.besu.tests.acceptance.dsl.condition.account.ExpectAccount
 import org.hyperledger.besu.tests.acceptance.dsl.condition.account.ExpectAccountBalanceAtBlock;
 import org.hyperledger.besu.tests.acceptance.dsl.condition.account.ExpectAccountBalanceNotChanging;
 import org.hyperledger.besu.tests.acceptance.dsl.transaction.eth.EthTransactions;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequestContext;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcResponse;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcSuccessResponse;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.JsonRpcMethod;
+import org.hyperledger.besu.ethereum.api.util.KeyStoreUtils;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -37,6 +42,7 @@ import com.google.common.base.Suppliers;
 import org.apache.tuweni.bytes.Bytes32;
 import org.web3j.crypto.Credentials;
 import org.web3j.utils.Convert.Unit;
+import io.vertx.core.json.JsonObject;
 
 public class Account {
 
@@ -74,8 +80,25 @@ public class Account {
     return new Account(eth, address.toString(), address, Optional.empty());
   }
 
-  public static Account create(final EthTransactions eth, final String name) {
-    return new Account(eth, name, SIGNATURE_ALGORITHM.get().generateKeyPair());
+  private String privateKeyFile;
+
+  public void setPrivateKeyFile(String privateKeyFile) {
+    this.privateKeyFile = privateKeyFile;
+  }
+
+  public String getPrivateKeyFile() {
+    return privateKeyFile;
+  }
+
+  public static Account create(final EthTransactions eth, final String name, final String password) {
+    KeyPair keyPair = SIGNATURE_ALGORITHM.get().generateKeyPair();
+    Account account = new Account(eth, name, keyPair);
+    if (password != null) {
+      String privateKey = keyPair.getPrivateKey().toString();
+      String filePath = KeyStoreUtils.savePrivateKeyToFile(privateKey, password);
+      account.setPrivateKeyFile(filePath);
+    }
+    return account;
   }
 
   static Account fromPrivateKey(
@@ -126,6 +149,34 @@ public class Account {
   public Condition balanceDoesNotChange(final int startingBalance) {
     return new ExpectAccountBalanceNotChanging(
         eth, this, BigDecimal.valueOf(startingBalance), Unit.ETHER);
+  }
+
+  public class EthCreateAccount implements JsonRpcMethod {
+    private final Accounts accounts;
+  
+    public EthCreateAccount(Accounts accounts) {
+      this.accounts = accounts;
+    }
+  
+    @Override
+    public String getName() {
+      return "eth_createAccount";
+    }
+  
+    @Override
+    public JsonRpcResponse response(JsonRpcRequestContext requestContext) {
+      String name = requestContext.getRequiredParameter(0, String.class);
+      String password = requestContext.getRequiredParameter(1, String.class);
+      Account account = accounts.createAccount(name, password);
+      
+      JsonObject result = new JsonObject();
+      result.put("address", account.getAddress());
+      if (account.getPrivateKeyFile() != null) {
+        result.put("privateKeyFile", account.getPrivateKeyFile());
+      }
+      
+      return new JsonRpcSuccessResponse(requestContext.getRequest().getId(), result);
+    }
   }
 
   @Override

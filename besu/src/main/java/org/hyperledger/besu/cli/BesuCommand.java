@@ -246,10 +246,11 @@ import picocli.CommandLine.IExecutionStrategy;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParameterException;
+import org.hyperledger.besu.cli.subcommands.CreateAccountCommand;
 
 /** Represents the main Besu CLI command that runs the Besu Ethereum client full node. */
 @SuppressWarnings("FieldCanBeLocal") // because Picocli injected fields report false positives
-@Command(
+@CommandLine.Command(
     description = "This command runs the Besu Ethereum client full node.",
     abbreviateSynopsis = true,
     name = "besu",
@@ -264,7 +265,11 @@ import picocli.CommandLine.ParameterException;
       "%n%n@|fg(cyan) To get started quickly, just choose a network to sync and a profile to run with suggested defaults:|@",
       "%n@|fg(cyan) for Mainnet|@ --network=mainnet --profile=[minimalist_staker|staker]",
       "%nMore info and other profiles at https://besu.hyperledger.org%n"
-    })
+    },
+    subcommands = {
+      CreateAccountCommand.class,
+    }
+    )
 public class BesuCommand implements DefaultCommandValues, Runnable {
 
   @SuppressWarnings("PrivateStaticFinalLoggers")

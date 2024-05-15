@@ -44,8 +44,8 @@ public class Accounts {
     return richBenefactorTwo;
   }
 
-  public Account createAccount(final String accountName) {
-    return Account.create(eth, accountName);
+  public Account createAccount(String name, String password) {
+    return Account.create(eth, name, password);
   }
 
   public Account createAccount(final Address address) {
