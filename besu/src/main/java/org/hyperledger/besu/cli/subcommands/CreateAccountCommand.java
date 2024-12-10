@@ -14,9 +14,6 @@
  */
 package org.hyperledger.besu.cli.subcommands;
 
-import org.hyperledger.besu.crypto.KeyPair;
-import org.hyperledger.besu.crypto.SignatureAlgorithmFactory;
-import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.ethereum.api.util.KeyStoreUtils;
 
 import picocli.CommandLine.Command;
@@ -58,19 +55,11 @@ public class CreateAccountCommand implements Runnable {
     // Generate a new private key
     String privateKey = KeyStoreUtils.generatePrivateKey();
 
-    // Generate the address from the private key
-    KeyPair keyPair =
-        SignatureAlgorithmFactory.getInstance()
-            .createKeyPair(
-                SignatureAlgorithmFactory.getInstance()
-                    .createPrivateKey(org.apache.tuweni.bytes.Bytes32.fromHexString(privateKey)));
-
-    Address address =
-        Address.extract(
-            org.hyperledger.besu.datatypes.Hash.hash(keyPair.getPublicKey().getEncodedBytes()));
-
     // Save the private key to a keystore file
     String keystoreFile = KeyStoreUtils.savePrivateKeyToFile(privateKey, password, name);
+
+    // Get the address from KeyStoreUtils
+    String address = KeyStoreUtils.getAddress(privateKey);
 
     System.out.println("Account created successfully.");
     System.out.println("Account name: " + name);
