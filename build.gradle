@@ -369,7 +369,9 @@ allprojects {
       '-org.hyperledger.besu.ethereum,' +
       '-org.hyperledger.besu.ethereum.*,' +
       '-org.hyperledger.besu.ethstats.*,' +
-      '-org.hyperledger.besu.evmtool',
+      '-org.hyperledger.besu.evmtool,' +
+      '-org.hyperledger.besu.cli.subcommands,' +
+      '-org.hyperledger.besu.ethereum.api.util',
       true)
     options.addStringOption('Xmaxerrs','65535')
     options.addStringOption('Xmaxwarns','65535')
@@ -975,9 +977,11 @@ def getGitCommitDetails(length = 8) {
 
 // Takes the version and if it contains SNAPSHOT, alpha, beta or RC in version then return true indicating an interim build
 def isInterimBuild(dockerBuildVersion) {
-  return (dockerBuildVersion ==~ /.*-SNAPSHOT/) || (dockerBuildVersion ==~ /.*-alpha/)
-  || (dockerBuildVersion ==~ /.*-beta/) || (dockerBuildVersion ==~ /.*-RC.*/)
-  || (dockerBuildVersion ==~ /.*develop.*/)
+  return (dockerBuildVersion ==~ /.*-SNAPSHOT/) ||
+    (dockerBuildVersion ==~ /.*-alpha/) ||
+    (dockerBuildVersion ==~ /.*-beta/) ||
+    (dockerBuildVersion ==~ /.*-RC.*/) ||
+    (dockerBuildVersion ==~ /.*develop.*/)
 }
 
 tasks.register("verifyDistributions") {

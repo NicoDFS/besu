@@ -74,6 +74,7 @@ import org.hyperledger.besu.cli.options.unstable.RPCOptions;
 import org.hyperledger.besu.cli.options.unstable.SynchronizerOptions;
 import org.hyperledger.besu.cli.presynctasks.PreSynchronizationTaskRunner;
 import org.hyperledger.besu.cli.presynctasks.PrivateDatabaseMigrationPreSyncTask;
+import org.hyperledger.besu.cli.subcommands.CreateAccountCommand;
 import org.hyperledger.besu.cli.subcommands.PasswordSubCommand;
 import org.hyperledger.besu.cli.subcommands.PublicKeySubCommand;
 import org.hyperledger.besu.cli.subcommands.RetestethSubCommand;
@@ -240,13 +241,11 @@ import org.apache.tuweni.units.bigints.UInt256;
 import org.slf4j.Logger;
 import picocli.AutoComplete;
 import picocli.CommandLine;
-import picocli.CommandLine.Command;
 import picocli.CommandLine.ExecutionException;
 import picocli.CommandLine.IExecutionStrategy;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParameterException;
-import org.hyperledger.besu.cli.subcommands.CreateAccountCommand;
 
 /** Represents the main Besu CLI command that runs the Besu Ethereum client full node. */
 @SuppressWarnings("FieldCanBeLocal") // because Picocli injected fields report false positives
@@ -268,8 +267,7 @@ import org.hyperledger.besu.cli.subcommands.CreateAccountCommand;
     },
     subcommands = {
       CreateAccountCommand.class,
-    }
-    )
+    })
 public class BesuCommand implements DefaultCommandValues, Runnable {
 
   @SuppressWarnings("PrivateStaticFinalLoggers")

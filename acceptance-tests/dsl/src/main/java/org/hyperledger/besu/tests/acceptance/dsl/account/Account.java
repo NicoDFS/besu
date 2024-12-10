@@ -21,17 +21,17 @@ import org.hyperledger.besu.crypto.SignatureAlgorithm;
 import org.hyperledger.besu.crypto.SignatureAlgorithmFactory;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Hash;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequestContext;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.JsonRpcMethod;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcResponse;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcSuccessResponse;
+import org.hyperledger.besu.ethereum.api.util.KeyStoreUtils;
 import org.hyperledger.besu.tests.acceptance.dsl.blockchain.Amount;
 import org.hyperledger.besu.tests.acceptance.dsl.condition.Condition;
 import org.hyperledger.besu.tests.acceptance.dsl.condition.account.ExpectAccountBalance;
 import org.hyperledger.besu.tests.acceptance.dsl.condition.account.ExpectAccountBalanceAtBlock;
 import org.hyperledger.besu.tests.acceptance.dsl.condition.account.ExpectAccountBalanceNotChanging;
 import org.hyperledger.besu.tests.acceptance.dsl.transaction.eth.EthTransactions;
-import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequestContext;
-import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcResponse;
-import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcSuccessResponse;
-import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.JsonRpcMethod;
-import org.hyperledger.besu.ethereum.api.util.KeyStoreUtils;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -39,10 +39,10 @@ import java.util.Optional;
 
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
+import io.vertx.core.json.JsonObject;
 import org.apache.tuweni.bytes.Bytes32;
 import org.web3j.crypto.Credentials;
 import org.web3j.utils.Convert.Unit;
-import io.vertx.core.json.JsonObject;
 
 public class Account {
 
@@ -82,7 +82,7 @@ public class Account {
 
   private String privateKeyFile;
 
-  public void setPrivateKeyFile(String privateKeyFile) {
+  public void setPrivateKeyFile(final String privateKeyFile) {
     this.privateKeyFile = privateKeyFile;
   }
 
@@ -90,12 +90,13 @@ public class Account {
     return privateKeyFile;
   }
 
-  public static Account create(final EthTransactions eth, final String name, final String password) {
+  public static Account create(
+      final EthTransactions eth, final String name, final String password) {
     KeyPair keyPair = SIGNATURE_ALGORITHM.get().generateKeyPair();
     Account account = new Account(eth, name, keyPair);
     if (password != null) {
       String privateKey = keyPair.getPrivateKey().toString();
-      String filePath = KeyStoreUtils.savePrivateKeyToFile(privateKey, password);
+      String filePath = KeyStoreUtils.savePrivateKeyToFile(privateKey, password, name);
       account.setPrivateKeyFile(filePath);
     }
     return account;
@@ -151,30 +152,30 @@ public class Account {
         eth, this, BigDecimal.valueOf(startingBalance), Unit.ETHER);
   }
 
-  public class EthCreateAccount implements JsonRpcMethod {
+  public static class EthCreateAccount implements JsonRpcMethod {
     private final Accounts accounts;
-  
-    public EthCreateAccount(Accounts accounts) {
+
+    public EthCreateAccount(final Accounts accounts) {
       this.accounts = accounts;
     }
-  
+
     @Override
     public String getName() {
       return "eth_createAccount";
     }
-  
+
     @Override
-    public JsonRpcResponse response(JsonRpcRequestContext requestContext) {
+    public JsonRpcResponse response(final JsonRpcRequestContext requestContext) {
       String name = requestContext.getRequiredParameter(0, String.class);
       String password = requestContext.getRequiredParameter(1, String.class);
       Account account = accounts.createAccount(name, password);
-      
+
       JsonObject result = new JsonObject();
       result.put("address", account.getAddress());
       if (account.getPrivateKeyFile() != null) {
         result.put("privateKeyFile", account.getPrivateKeyFile());
       }
-      
+
       return new JsonRpcSuccessResponse(requestContext.getRequest().getId(), result);
     }
   }
@@ -192,5 +193,15 @@ public class Account {
         + ", nonce="
         + nonce
         + '}';
+  }
+
+  public String savePrivateKey(final String password) {
+    if (!privateKey.isPresent()) {
+      throw new IllegalStateException("Cannot save private key - key not available");
+    }
+    String filePath =
+        KeyStoreUtils.savePrivateKeyToFile(
+            privateKey.get().toString(), password, address.toString());
+    return filePath;
   }
 }
