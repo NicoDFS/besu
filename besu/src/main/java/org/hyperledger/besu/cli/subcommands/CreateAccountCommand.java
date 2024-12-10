@@ -14,6 +14,9 @@
  */
 package org.hyperledger.besu.cli.subcommands;
 
+import org.hyperledger.besu.crypto.KeyPair;
+import org.hyperledger.besu.crypto.SignatureAlgorithmFactory;
+import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.ethereum.api.util.KeyStoreUtils;
 
 import picocli.CommandLine.Command;
@@ -25,21 +28,24 @@ import picocli.CommandLine.Option;
  */
 @Command(
     name = "create-account",
-    description = "Creates a new account and stores the private key in a keystore file",
+    description =
+        "Creates a new account and stores the private key in a keystore file. "
+            + "For passwords containing special characters, enclose the password in single quotes.",
     mixinStandardHelpOptions = true)
 public class CreateAccountCommand implements Runnable {
 
   /** The name identifier for the account. */
   @Option(
       names = {"--name"},
-      description = "Name identifier for the account",
+      description = "Name identifier for the account. Can include spaces and special characters.",
       required = true)
   private String name;
 
   /** The password used to encrypt the private key. */
   @Option(
       names = {"--password"},
-      description = "Password to encrypt the private key",
+      description =
+          "Password to encrypt the private key. For special characters, enclose in single quotes (e.g., 'my!pass@123').",
       required = true)
   private String password;
 
@@ -52,11 +58,27 @@ public class CreateAccountCommand implements Runnable {
     // Generate a new private key
     String privateKey = KeyStoreUtils.generatePrivateKey();
 
+    // Generate the address from the private key
+    KeyPair keyPair =
+        SignatureAlgorithmFactory.getInstance()
+            .createKeyPair(
+                SignatureAlgorithmFactory.getInstance()
+                    .createPrivateKey(org.apache.tuweni.bytes.Bytes32.fromHexString(privateKey)));
+
+    Address address =
+        Address.extract(
+            org.hyperledger.besu.datatypes.Hash.hash(keyPair.getPublicKey().getEncodedBytes()));
+
     // Save the private key to a keystore file
     String keystoreFile = KeyStoreUtils.savePrivateKeyToFile(privateKey, password, name);
 
     System.out.println("Account created successfully.");
     System.out.println("Account name: " + name);
+    System.out.println("Address: " + address);
     System.out.println("Keystore file: " + keystoreFile);
+    System.out.println("\nIMPORTANT: Keep your keystore file and password safe!");
+    System.out.println(
+        "Your keystore file contains your private key encrypted with your password.");
+    System.out.println("You can import this keystore file into most Ethereum wallets.");
   }
 }
