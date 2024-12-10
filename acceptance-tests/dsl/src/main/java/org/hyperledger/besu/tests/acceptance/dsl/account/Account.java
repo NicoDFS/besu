@@ -23,8 +23,11 @@ import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequestContext;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.JsonRpcMethod;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.JsonRpcParameter.JsonRpcParameterException;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcErrorResponse;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcResponse;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcSuccessResponse;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.RpcErrorType;
 import org.hyperledger.besu.ethereum.api.util.KeyStoreUtils;
 import org.hyperledger.besu.tests.acceptance.dsl.blockchain.Amount;
 import org.hyperledger.besu.tests.acceptance.dsl.condition.Condition;
@@ -166,17 +169,22 @@ public class Account {
 
     @Override
     public JsonRpcResponse response(final JsonRpcRequestContext requestContext) {
-      String name = requestContext.getRequiredParameter(0, String.class);
-      String password = requestContext.getRequiredParameter(1, String.class);
-      Account account = accounts.createAccount(name, password);
+      try {
+        String name = requestContext.getRequiredParameter(0, String.class);
+        String password = requestContext.getRequiredParameter(1, String.class);
+        Account account = accounts.createAccount(name, password);
 
-      JsonObject result = new JsonObject();
-      result.put("address", account.getAddress());
-      if (account.getPrivateKeyFile() != null) {
-        result.put("privateKeyFile", account.getPrivateKeyFile());
+        JsonObject result = new JsonObject();
+        result.put("address", account.getAddress());
+        if (account.getPrivateKeyFile() != null) {
+          result.put("privateKeyFile", account.getPrivateKeyFile());
+        }
+
+        return new JsonRpcSuccessResponse(requestContext.getRequest().getId(), result);
+      } catch (JsonRpcParameterException e) {
+        return new JsonRpcErrorResponse(
+            requestContext.getRequest().getId(), RpcErrorType.INVALID_PARAMS);
       }
-
-      return new JsonRpcSuccessResponse(requestContext.getRequest().getId(), result);
     }
   }
 
