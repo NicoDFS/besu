@@ -32,7 +32,6 @@ import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
 import org.hyperledger.besu.ethereum.core.MutableWorldState;
 import org.hyperledger.besu.ethereum.core.Withdrawal;
-import org.hyperledger.besu.ethereum.mainnet.WithdrawalRequestValidator.ProhibitedWithdrawalRequests;
 import org.hyperledger.besu.ethereum.mainnet.blockhash.FrontierBlockHashProcessor;
 import org.hyperledger.besu.ethereum.referencetests.ReferenceTestBlockchain;
 import org.hyperledger.besu.ethereum.referencetests.ReferenceTestWorldState;
@@ -69,9 +68,6 @@ abstract class AbstractBlockProcessorTest {
   void baseSetup() {
     lenient().when(protocolSchedule.getByBlockHeader(any())).thenReturn(protocolSpec);
     lenient()
-        .when(protocolSpec.getWithdrawalRequestValidator())
-        .thenReturn(new ProhibitedWithdrawalRequests());
-    lenient()
         .when(protocolSpec.getBlockHashProcessor())
         .thenReturn(new FrontierBlockHashProcessor());
     blockProcessor =
@@ -88,14 +84,7 @@ abstract class AbstractBlockProcessorTest {
   void withProcessorAndEmptyWithdrawals_WithdrawalsAreNotProcessed() {
     when(protocolSpec.getWithdrawalsProcessor()).thenReturn(Optional.empty());
     blockProcessor.processBlock(
-        blockchain,
-        worldState,
-        emptyBlockHeader,
-        emptyList(),
-        emptyList(),
-        Optional.empty(),
-        Optional.empty(),
-        null);
+        blockchain, worldState, emptyBlockHeader, emptyList(), emptyList(), Optional.empty(), null);
     verify(withdrawalsProcessor, never()).processWithdrawals(any(), any());
   }
 
@@ -103,14 +92,7 @@ abstract class AbstractBlockProcessorTest {
   void withNoProcessorAndEmptyWithdrawals_WithdrawalsAreNotProcessed() {
     when(protocolSpec.getWithdrawalsProcessor()).thenReturn(Optional.empty());
     blockProcessor.processBlock(
-        blockchain,
-        worldState,
-        emptyBlockHeader,
-        emptyList(),
-        emptyList(),
-        Optional.empty(),
-        Optional.empty(),
-        null);
+        blockchain, worldState, emptyBlockHeader, emptyList(), emptyList(), Optional.empty(), null);
     verify(withdrawalsProcessor, never()).processWithdrawals(any(), any());
   }
 
@@ -126,7 +108,6 @@ abstract class AbstractBlockProcessorTest {
         emptyList(),
         emptyList(),
         Optional.of(withdrawals),
-        Optional.empty(),
         null);
     verify(withdrawalsProcessor).processWithdrawals(eq(withdrawals), any());
   }
@@ -144,7 +125,6 @@ abstract class AbstractBlockProcessorTest {
         emptyList(),
         emptyList(),
         Optional.of(withdrawals),
-        Optional.empty(),
         null);
     verify(withdrawalsProcessor, never()).processWithdrawals(any(), any());
   }

@@ -40,10 +40,12 @@ import org.hyperledger.besu.evm.precompile.SHA256PrecompiledContract;
 import org.hyperledger.besu.evm.processor.AbstractMessageProcessor;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.units.bigints.UInt256;
+import org.apache.tuweni.units.bigints.UInt64;
 
 /**
  * Provides various gas cost lookups and calculations used during block processing.
@@ -145,6 +147,20 @@ public interface GasCalculator {
   long callOperationBaseGasCost();
 
   /**
+   * Returns the gas cost to transfer funds in a call operation.
+   *
+   * @return the gas cost to transfer funds in a call operation
+   */
+  long callValueTransferGasCost();
+
+  /**
+   * Returns the gas cost to create a new account.
+   *
+   * @return the gas cost to create a new account
+   */
+  long newAccountGasCost();
+
+  /**
    * Returns the gas cost for one of the various CALL operations.
    *
    * @param frame The current frame
@@ -211,35 +227,6 @@ public interface GasCalculator {
       boolean accountIsWarm);
 
   /**
-   * Returns the gas cost for AUTHCALL.
-   *
-   * @param frame The current frame
-   * @param stipend The gas stipend being provided by the CALL caller
-   * @param inputDataOffset The offset in memory to retrieve the CALL input data
-   * @param inputDataLength The CALL input data length
-   * @param outputDataOffset The offset in memory to place the CALL output data
-   * @param outputDataLength The CALL output data length
-   * @param transferValue The wei being transferred
-   * @param invoker The contract calling out on behalf of the authority
-   * @param invokee The address of the recipient (never null)
-   * @param accountIsWarm The address of the contract is "warm" as per EIP-2929
-   * @return The gas cost for the CALL operation
-   */
-  default long authCallOperationGasCost(
-      final MessageFrame frame,
-      final long stipend,
-      final long inputDataOffset,
-      final long inputDataLength,
-      final long outputDataOffset,
-      final long outputDataLength,
-      final Wei transferValue,
-      final Account invoker,
-      final Address invokee,
-      final boolean accountIsWarm) {
-    return 0L;
-  }
-
-  /**
    * Gets additional call stipend.
    *
    * @return the additional call stipend
@@ -255,6 +242,20 @@ public interface GasCalculator {
    * @return the amount of gas parent will provide its child CALL
    */
   long gasAvailableForChildCall(MessageFrame frame, long stipend, boolean transfersValue);
+
+  /**
+   * For EXT*CALL, the minimum amount of gas the parent must retain. First described in EIP-7069
+   *
+   * @return MIN_RETAINED_GAS
+   */
+  long getMinRetainedGas();
+
+  /**
+   * For EXT*CALL, the minimum amount of gas that a child must receive. First described in EIP-7069
+   *
+   * @return MIN_CALLEE_GAS
+   */
+  long getMinCalleeGas();
 
   /**
    * Returns the amount of gas the CREATE operation will consume.
@@ -615,49 +616,70 @@ public interface GasCalculator {
   }
 
   /**
+   * Returns the blob gas cost per blob. This is the gas cost for each blob of data that is added to
+   * the block.
+   *
+   * @return the blob gas cost per blob
+   */
+  default long getBlobGasPerBlob() {
+    return 0L;
+  }
+
+  /**
    * Return the gas cost given the number of blobs
    *
    * @param blobCount the number of blobs
    * @return the total gas cost
    */
-  default long blobGasCost(final int blobCount) {
+  default long blobGasCost(final long blobCount) {
     return 0L;
   }
 
   /**
-   * Compute the new value for the excess blob gas, given the parent value and the count of new
-   * blobs
+   * Compute the new value for the excess blob gas, given the parent value, the parent blob gas used
+   * and the parent target blobs per block, if present. Used from Cancun onwards. Presence of
+   * parentTargetBlobsPerBlock implies EIP-7442/Prague enabled. Default to Cancun constant target
+   * gas value if parentTargetBlobsPerBlock is not present.
    *
    * @param parentExcessBlobGas excess blob gas from the parent
-   * @param newBlobs count of new blobs
+   * @param parentBlobGasUsed blob gas used from the parent
+   * @param parentTargetBlobsPerBlock the optional target blobs per block from the parent
    * @return the new excess blob gas value
    */
-  default long computeExcessBlobGas(final long parentExcessBlobGas, final int newBlobs) {
+  default long computeExcessBlobGas(
+      final long parentExcessBlobGas,
+      final long parentBlobGasUsed,
+      final Optional<UInt64> parentTargetBlobsPerBlock) {
+    final long parentTargetBlobGas =
+        parentTargetBlobsPerBlock
+            .map(blobCount -> blobGasCost(blobCount.toLong()))
+            .orElse(CancunGasCalculator.TARGET_BLOB_GAS_PER_BLOCK);
+    final long currentExcessBlobGas = parentExcessBlobGas + parentBlobGasUsed;
+
+    if (currentExcessBlobGas < parentTargetBlobGas) {
+      return 0L;
+    }
+    return currentExcessBlobGas - parentTargetBlobGas;
+  }
+
+  /**
+   * Returns the upfront gas cost for EIP 7702 authorization processing.
+   *
+   * @param delegateCodeListLength The length of the code delegation list
+   * @return the gas cost
+   */
+  default long delegateCodeGasCost(final int delegateCodeListLength) {
     return 0L;
   }
 
   /**
-   * Compute the new value for the excess blob gas, given the parent value and the blob gas used
+   * Calculates the refund for proessing the 7702 code delegation list if an delegater account
+   * already exist in the trie.
    *
-   * @param parentExcessBlobGas excess blob gas from the parent
-   * @param blobGasUsed blob gas used
-   * @return the new excess blob gas value
+   * @param alreadyExistingAccountSize The number of accounts already in the trie
+   * @return the gas refund
    */
-  default long computeExcessBlobGas(final long parentExcessBlobGas, final long blobGasUsed) {
-    return 0L;
-  }
-
-  /**
-   * Returns the gas cost of validating an auth commitment for an AUTHCALL
-   *
-   * @param frame the current frame, with memory to be read from
-   * @param offset start of memory read
-   * @param length amount of memory read
-   * @param authority address to check for warmup
-   * @return total gas cost for the operation
-   */
-  default long authOperationGasCost(
-      final MessageFrame frame, final long offset, final long length, final Address authority) {
+  default long calculateDelegateCodeGasRefund(final long alreadyExistingAccountSize) {
     return 0L;
   }
 }

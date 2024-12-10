@@ -23,6 +23,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import org.hyperledger.besu.components.BesuComponent;
 import org.hyperledger.besu.config.CheckpointConfigOptions;
 import org.hyperledger.besu.config.GenesisConfigFile;
 import org.hyperledger.besu.config.GenesisConfigOptions;
@@ -32,6 +33,7 @@ import org.hyperledger.besu.cryptoservices.NodeKeyUtils;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.GasLimitCalculator;
+import org.hyperledger.besu.ethereum.api.ImmutableApiConfiguration;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.chain.GenesisState;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
@@ -40,7 +42,7 @@ import org.hyperledger.besu.ethereum.core.BlockBody;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
 import org.hyperledger.besu.ethereum.core.Difficulty;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.eth.EthProtocolConfiguration;
 import org.hyperledger.besu.ethereum.eth.sync.SynchronizerConfiguration;
@@ -94,7 +96,7 @@ public class MergeBesuControllerBuilderTest {
   @Mock CheckpointConfigOptions checkpointConfigOptions;
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-  MiningParameters miningParameters;
+  MiningConfiguration miningConfiguration;
 
   @Mock PrivacyParameters privacyParameters;
   @Mock Clock clock;
@@ -124,7 +126,6 @@ public class MergeBesuControllerBuilderTest {
     lenient().when(genesisConfigFile.getExtraData()).thenReturn(Bytes.EMPTY.toHexString());
     lenient().when(genesisConfigFile.getMixHash()).thenReturn(Hash.ZERO.toHexString());
     lenient().when(genesisConfigFile.getNonce()).thenReturn(Long.toHexString(1));
-    lenient().when(genesisConfigFile.getConfigOptions(any())).thenReturn(genesisConfigOptions);
     lenient().when(genesisConfigFile.getConfigOptions()).thenReturn(genesisConfigOptions);
     lenient().when(genesisConfigOptions.getCheckpointOptions()).thenReturn(checkpointConfigOptions);
     when(genesisConfigOptions.getTerminalTotalDifficulty())
@@ -167,7 +168,7 @@ public class MergeBesuControllerBuilderTest {
     lenient()
         .when(worldStateKeyValueStorage.updater())
         .thenReturn(mock(ForestWorldStateKeyValueStorage.Updater.class));
-    lenient().when(miningParameters.getTargetGasLimit()).thenReturn(OptionalLong.empty());
+    lenient().when(miningConfiguration.getTargetGasLimit()).thenReturn(OptionalLong.empty());
 
     besuControllerBuilder = visitWithMockConfigs(new MergeBesuControllerBuilder());
   }
@@ -179,7 +180,7 @@ public class MergeBesuControllerBuilderTest {
             .genesisConfigFile(genesisConfigFile)
             .synchronizerConfiguration(synchronizerConfiguration)
             .ethProtocolConfiguration(ethProtocolConfiguration)
-            .miningParameters(miningParameters)
+            .miningParameters(miningConfiguration)
             .metricsSystem(observableMetricsSystem)
             .privacyParameters(privacyParameters)
             .dataDirectory(tempDir)
@@ -190,7 +191,9 @@ public class MergeBesuControllerBuilderTest {
             .storageProvider(storageProvider)
             .evmConfiguration(EvmConfiguration.DEFAULT)
             .networkConfiguration(NetworkingConfiguration.create())
-            .networkId(networkId);
+            .besuComponent(mock(BesuComponent.class))
+            .networkId(networkId)
+            .apiConfiguration(ImmutableApiConfiguration.builder().build());
   }
 
   @Test

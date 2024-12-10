@@ -14,61 +14,69 @@
  */
 package org.hyperledger.besu.evm.gascalculator;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.hyperledger.besu.datatypes.Address;
-import org.hyperledger.besu.datatypes.Wei;
-import org.hyperledger.besu.evm.account.Account;
-import org.hyperledger.besu.evm.account.MutableAccount;
-import org.hyperledger.besu.evm.frame.MessageFrame;
 
+import java.util.List;
+import java.util.Optional;
+
+import org.apache.tuweni.units.bigints.UInt64;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-public class PragueGasCalculatorTest {
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class PragueGasCalculatorTest {
+
+  private final PragueGasCalculator pragueGasCalculator = new PragueGasCalculator();
+
   @Test
-  public void testAuthOperationGasCost() {
-    PragueGasCalculator pragueGasCalculator = new PragueGasCalculator();
-    MessageFrame runningIn = mock(MessageFrame.class);
-    Address authority = Address.fromHexString("0xdeadbeef");
-    when(runningIn.isAddressWarm(authority)).thenReturn(true);
-    long gasSpent = pragueGasCalculator.authOperationGasCost(runningIn, 0, 97, authority);
-    assertEquals(
-        3100 + 100 + pragueGasCalculator.memoryExpansionGasCost(runningIn, 0, 97), gasSpent);
+  void testPrecompileSize() {
+    PragueGasCalculator subject = new PragueGasCalculator();
+    assertThat(subject.isPrecompile(Address.precompiled(0x14))).isFalse();
+    assertThat(subject.isPrecompile(Address.BLS12_MAP_FP2_TO_G2)).isTrue();
   }
 
-  @Test
-  public void testAuthCallOperationGasCostWithTransfer() {
-    PragueGasCalculator pragueGasCalculator = new PragueGasCalculator();
-    MessageFrame runningIn = mock(MessageFrame.class);
-    Account invoker = mock(MutableAccount.class);
-    when(invoker.getAddress()).thenReturn(Address.fromHexString("0xCafeBabe"));
-    Address invokee = Address.fromHexString("0xdeadbeef");
-    when(runningIn.isAddressWarm(invokee)).thenReturn(true);
-    long gasSpentInAuthCall =
-        pragueGasCalculator.authCallOperationGasCost(
-            runningIn, 63, 0, 97, 100, 97, Wei.ONE, invoker, invokee, true);
-    long gasSpentInCall =
-        pragueGasCalculator.callOperationGasCost(
-            runningIn, 63, 0, 97, 100, 97, Wei.ONE, invoker, invokee, true);
-    assertEquals(gasSpentInCall - 2300, gasSpentInAuthCall);
+  @ParameterizedTest(
+      name = "{index} - parent gas {0}, used gas {1}, blob target {2} new excess {3}")
+  @MethodSource("blobGasses")
+  public void shouldCalculateExcessBlobGasCorrectly(
+      final long parentExcess, final long used, final long target, final long expected) {
+    final long usedBlobGas = pragueGasCalculator.blobGasCost(used);
+    assertThat(
+            pragueGasCalculator.computeExcessBlobGas(
+                parentExcess, usedBlobGas, Optional.of(UInt64.valueOf(target))))
+        .isEqualTo(expected);
   }
 
-  @Test
-  public void testAuthCallOperationGasCostNoTransfer() {
-    PragueGasCalculator pragueGasCalculator = new PragueGasCalculator();
-    MessageFrame runningIn = mock(MessageFrame.class);
-    Account invoker = mock(MutableAccount.class);
-    when(invoker.getAddress()).thenReturn(Address.fromHexString("0xCafeBabe"));
-    Address invokee = Address.fromHexString("0xdeadbeef");
-    when(runningIn.isAddressWarm(invokee)).thenReturn(true);
-    long gasSpentInAuthCall =
-        pragueGasCalculator.authCallOperationGasCost(
-            runningIn, 63, 0, 97, 100, 97, Wei.ZERO, invoker, invokee, true);
-    long gasSpentInCall =
-        pragueGasCalculator.callOperationGasCost(
-            runningIn, 63, 0, 97, 100, 97, Wei.ZERO, invoker, invokee, true);
-    assertEquals(gasSpentInCall, gasSpentInAuthCall);
+  Iterable<Arguments> blobGasses() {
+    long threeBlobTargetGas = CancunGasCalculator.TARGET_BLOB_GAS_PER_BLOCK;
+    long cancunTargetCount = 3;
+    long newTargetCount = 4;
+
+    return List.of(
+        // If blob target count remains at 3
+        Arguments.of(0L, 0L, cancunTargetCount, 0L),
+        Arguments.of(threeBlobTargetGas, 0L, cancunTargetCount, 0L),
+        Arguments.of(0L, cancunTargetCount, cancunTargetCount, 0L),
+        Arguments.of(1L, cancunTargetCount, cancunTargetCount, 1L),
+        Arguments.of(
+            threeBlobTargetGas, 1L, cancunTargetCount, pragueGasCalculator.getBlobGasPerBlob()),
+        Arguments.of(threeBlobTargetGas, 3L, cancunTargetCount, threeBlobTargetGas),
+        // New target count
+        Arguments.of(0L, 0L, newTargetCount, 0L),
+        Arguments.of(threeBlobTargetGas, 0L, newTargetCount, 0L),
+        Arguments.of(newTargetCount, 0L, newTargetCount, 0L),
+        Arguments.of(0L, newTargetCount, newTargetCount, 0L),
+        Arguments.of(1L, newTargetCount, newTargetCount, 1L),
+        Arguments.of(
+            pragueGasCalculator.blobGasCost(newTargetCount),
+            1L,
+            newTargetCount,
+            pragueGasCalculator.getBlobGasPerBlob()),
+        Arguments.of(threeBlobTargetGas, newTargetCount, newTargetCount, threeBlobTargetGas));
   }
 }

@@ -35,6 +35,7 @@ import org.hyperledger.besu.ethereum.api.query.BlockchainQueries;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockDataGenerator;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.TransactionReceipt;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
@@ -82,7 +83,10 @@ public class EthGetBlockReceiptsTest {
       blockchain.appendBlock(block, receipts);
     }
 
-    blockchainQueries = spy(new BlockchainQueries(blockchain, worldStateArchive));
+    blockchainQueries =
+        spy(
+            new BlockchainQueries(
+                protocolSchedule, blockchain, worldStateArchive, MiningConfiguration.newDefault()));
     protocolSchedule = mock(ProtocolSchedule.class);
     method = new EthGetBlockReceipts(blockchainQueries, protocolSchedule);
   }
@@ -96,7 +100,7 @@ public class EthGetBlockReceiptsTest {
   public void exceptionWhenNoParamsSupplied() {
     assertThatThrownBy(() -> method.response(requestWithParams()))
         .isInstanceOf(InvalidJsonRpcParameters.class)
-        .hasMessage("Missing required json rpc parameter at index 0");
+        .hasMessage("Invalid block or block hash parameters (index 0)");
     verifyNoMoreInteractions(blockchainQueries);
   }
 

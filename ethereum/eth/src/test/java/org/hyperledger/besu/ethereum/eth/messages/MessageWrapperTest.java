@@ -259,9 +259,7 @@ public class MessageWrapperTest {
             new BlockBody(
                 Collections.emptyList(),
                 Collections.emptyList(),
-                Optional.of(Collections.emptyList()),
-                Optional.empty(),
-                Optional.empty()));
+                Optional.of(Collections.emptyList())));
   }
 
   @Test
@@ -285,9 +283,7 @@ public class MessageWrapperTest {
             new BlockBody(
                 Collections.emptyList(),
                 Collections.emptyList(),
-                Optional.of(Collections.emptyList()),
-                Optional.empty(),
-                Optional.empty()));
+                Optional.of(Collections.emptyList())));
   }
 
   @Test

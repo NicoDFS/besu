@@ -20,7 +20,7 @@ import static org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolConf
 import static org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolConfiguration.Implementation.SEQUENCED;
 import static org.mockito.Mockito.mock;
 
-import org.hyperledger.besu.cli.config.ProfileName;
+import org.hyperledger.besu.cli.config.InternalProfileName;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
 
 import java.math.BigInteger;
@@ -96,6 +96,16 @@ class ConfigurationOverviewBuilderTest {
   }
 
   @Test
+  void setSyncMinPeers() {
+    final String noSyncMinPeersSet = builder.build();
+    assertThat(noSyncMinPeersSet).doesNotContain("Sync min peers:");
+
+    builder.setSyncMinPeers(3);
+    final String syncMinPeersSet = builder.build();
+    assertThat(syncMinPeersSet).contains("Sync min peers: 3");
+  }
+
+  @Test
   void setRpcPort() {
     final String noRpcPortSet = builder.build();
     assertThat(noRpcPortSet).doesNotContain("RPC HTTP port:");
@@ -152,7 +162,7 @@ class ConfigurationOverviewBuilderTest {
   }
 
   @Test
-  void setBonsaiLimitTrieLogsEnabled() {
+  void setDiffbasedLimitTrieLogsEnabled() {
     final String noTrieLogRetentionLimitSet = builder.build();
     assertThat(noTrieLogRetentionLimitSet).doesNotContain("Limit trie logs enabled");
 
@@ -213,7 +223,7 @@ class ConfigurationOverviewBuilderTest {
 
   @Test
   void setProfile() {
-    builder.setProfile(ProfileName.DEV.name());
+    builder.setProfile(InternalProfileName.DEV.name());
     final String profileSelected = builder.build();
     assertThat(profileSelected).contains("Profile: DEV");
   }

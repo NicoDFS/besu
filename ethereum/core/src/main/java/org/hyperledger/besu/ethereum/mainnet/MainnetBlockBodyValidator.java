@@ -20,13 +20,13 @@ import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockBody;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.TransactionReceipt;
-import org.hyperledger.besu.ethereum.core.WithdrawalRequest;
 import org.hyperledger.besu.evm.log.LogsBloomFilter;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.tuweni.bytes.Bytes32;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,30 +50,29 @@ public class MainnetBlockBodyValidator implements BlockBodyValidator {
       final Block block,
       final List<TransactionReceipt> receipts,
       final Hash worldStateRootHash,
-      final HeaderValidationMode ommerValidationMode) {
-
-    if (!validateBodyLight(context, block, receipts, ommerValidationMode)) {
-      return false;
+      final HeaderValidationMode ommerValidationMode,
+      final BodyValidationMode bodyValidationMode) {
+    if (bodyValidationMode == BodyValidationMode.NONE) {
+      return true;
     }
 
-    if (!validateStateRoot(
-        block.getHeader(), block.getHeader().getStateRoot(), worldStateRootHash)) {
-      LOG.warn("Invalid block RLP : {}", block.toRlp().toHexString());
-      receipts.forEach(
-          receipt ->
-              LOG.warn("Transaction receipt found in the invalid block {}", receipt.toString()));
-      return false;
+    if (bodyValidationMode == BodyValidationMode.LIGHT
+        || bodyValidationMode == BodyValidationMode.FULL) {
+      if (!validateBodyLight(context, block, receipts, ommerValidationMode)) {
+        return false;
+      }
     }
 
+    if (bodyValidationMode == BodyValidationMode.ROOT_ONLY
+        || bodyValidationMode == BodyValidationMode.FULL) {
+      return validateBodyRoots(block, receipts, worldStateRootHash);
+    }
     return true;
   }
 
-  @Override
-  public boolean validateBodyLight(
-      final ProtocolContext context,
-      final Block block,
-      final List<TransactionReceipt> receipts,
-      final HeaderValidationMode ommerValidationMode) {
+  @VisibleForTesting
+  protected boolean validateBodyRoots(
+      final Block block, final List<TransactionReceipt> receipts, final Hash worldStateRootHash) {
     final BlockHeader header = block.getHeader();
     final BlockBody body = block.getBody();
 
@@ -86,6 +85,26 @@ public class MainnetBlockBodyValidator implements BlockBodyValidator {
     if (!validateReceiptsRoot(header, header.getReceiptsRoot(), receiptsRoot)) {
       return false;
     }
+
+    if (!validateStateRoot(
+        block.getHeader(), block.getHeader().getStateRoot(), worldStateRootHash)) {
+      LOG.warn("Invalid block RLP : {}", block.toRlp().toHexString());
+      receipts.forEach(
+          receipt ->
+              LOG.warn("Transaction receipt found in the invalid block {}", receipt.toString()));
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean validateBodyLight(
+      final ProtocolContext context,
+      final Block block,
+      final List<TransactionReceipt> receipts,
+      final HeaderValidationMode ommerValidationMode) {
+
+    final BlockHeader header = block.getHeader();
 
     final long gasUsed =
         receipts.isEmpty() ? 0 : receipts.get(receipts.size() - 1).getCumulativeGasUsed();
@@ -104,24 +123,13 @@ public class MainnetBlockBodyValidator implements BlockBodyValidator {
     if (!validateWithdrawals(block)) {
       return false;
     }
-
-    if (!validateDeposits(block, receipts)) {
-      return false;
-    }
-
-    if (body.getWithdrawalRequests().isPresent()) {
-      if (!validateWithdrawalRequests(block, body.getWithdrawalRequests().get())) {
-        return false;
-      }
-    }
-
     return true;
   }
 
-  private static boolean validateTransactionsRoot(
+  private boolean validateTransactionsRoot(
       final BlockHeader header, final Bytes32 expected, final Bytes32 actual) {
     if (!expected.equals(actual)) {
-      LOG.info(
+      LOG.warn(
           "Invalid block {}: transaction root mismatch (expected={}, actual={})",
           header.toLogString(),
           expected,
@@ -160,7 +168,7 @@ public class MainnetBlockBodyValidator implements BlockBodyValidator {
     return true;
   }
 
-  private static boolean validateReceiptsRoot(
+  private boolean validateReceiptsRoot(
       final BlockHeader header, final Bytes32 expected, final Bytes32 actual) {
     if (!expected.equals(actual)) {
       LOG.warn(
@@ -174,7 +182,7 @@ public class MainnetBlockBodyValidator implements BlockBodyValidator {
     return true;
   }
 
-  private static boolean validateStateRoot(
+  private boolean validateStateRoot(
       final BlockHeader header, final Bytes32 expected, final Bytes32 actual) {
     if (!expected.equals(actual)) {
       LOG.warn(
@@ -314,27 +322,5 @@ public class MainnetBlockBodyValidator implements BlockBodyValidator {
     }
 
     return true;
-  }
-
-  private boolean validateDeposits(final Block block, final List<TransactionReceipt> receipts) {
-    final DepositsValidator depositsValidator =
-        protocolSchedule.getByBlockHeader(block.getHeader()).getDepositsValidator();
-
-    if (!depositsValidator.validateDeposits(block, receipts)) {
-      return false;
-    }
-
-    if (!depositsValidator.validateDepositsRoot(block)) {
-      return false;
-    }
-
-    return true;
-  }
-
-  private boolean validateWithdrawalRequests(
-      final Block block, final List<WithdrawalRequest> withdrawalRequests) {
-    final WithdrawalRequestValidator withdrawalRequestValidator =
-        protocolSchedule.getByBlockHeader(block.getHeader()).getWithdrawalRequestValidator();
-    return withdrawalRequestValidator.validateWithdrawalRequestsInBlock(block, withdrawalRequests);
   }
 }

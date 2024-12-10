@@ -115,6 +115,11 @@ public class BesuEventsImpl implements BesuEvents {
   }
 
   @Override
+  public long addInitialSyncCompletionListener(final InitialSyncCompletionListener listener) {
+    return syncState.subscribeCompletionReached(listener);
+  }
+
+  @Override
   public long addTransactionAddedListener(final TransactionAddedListener listener) {
     return transactionPool.subscribePendingTransactions(listener::onTransactionAdded);
   }
@@ -128,7 +133,7 @@ public class BesuEventsImpl implements BesuEvents {
   public long addTransactionDroppedListener(
       final TransactionDroppedListener transactionDroppedListener) {
     return transactionPool.subscribeDroppedTransactions(
-        transactionDroppedListener::onTransactionDropped);
+        (transaction, reason) -> transactionDroppedListener.onTransactionDropped(transaction));
   }
 
   @Override

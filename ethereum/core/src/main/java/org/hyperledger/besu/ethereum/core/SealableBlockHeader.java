@@ -24,6 +24,7 @@ import java.util.Optional;
 
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
+import org.apache.tuweni.units.bigints.UInt64;
 
 /** A block header capable of being sealed. */
 public class SealableBlockHeader extends ProcessableBlockHeader {
@@ -43,9 +44,7 @@ public class SealableBlockHeader extends ProcessableBlockHeader {
 
   protected final Hash withdrawalsRoot;
 
-  protected final Hash depositsRoot;
-
-  protected final Hash withdrawalRequestsRoot;
+  protected final Hash requestsHash;
 
   protected final Long blobGasUsed;
 
@@ -71,8 +70,8 @@ public class SealableBlockHeader extends ProcessableBlockHeader {
       final Long blobGasUsed,
       final BlobGas excessBlobGas,
       final Bytes32 parentBeaconBlockRoot,
-      final Hash depositsRoot,
-      final Hash withdrawalRequestsRoot) {
+      final Hash requestsHash,
+      final UInt64 targetBlobsPerBlock) {
     super(
         parentHash,
         coinbase,
@@ -82,14 +81,14 @@ public class SealableBlockHeader extends ProcessableBlockHeader {
         timestamp,
         baseFee,
         mixHashOrPrevRandao,
-        parentBeaconBlockRoot);
+        parentBeaconBlockRoot,
+        targetBlobsPerBlock);
     this.ommersHash = ommersHash;
     this.stateRoot = stateRoot;
     this.transactionsRoot = transactionsRoot;
     this.withdrawalsRoot = withdrawalsRoot;
-    this.depositsRoot = depositsRoot;
     this.receiptsRoot = receiptsRoot;
-    this.withdrawalRequestsRoot = withdrawalRequestsRoot;
+    this.requestsHash = requestsHash;
     this.logsBloom = logsBloom;
     this.gasUsed = gasUsed;
     this.extraData = extraData;
@@ -170,16 +169,12 @@ public class SealableBlockHeader extends ProcessableBlockHeader {
   }
 
   /**
-   * Returns the block deposits root hash.
+   * Returns the block requests hash.
    *
-   * @return the block deposits root hash
+   * @return the block requests hash
    */
-  public Optional<Hash> getDepositsRoot() {
-    return Optional.ofNullable(depositsRoot);
-  }
-
-  public Optional<Hash> getWithdrawalRequestsRoot() {
-    return Optional.ofNullable(withdrawalRequestsRoot);
+  public Optional<Hash> getRequestsHash() {
+    return Optional.ofNullable(requestsHash);
   }
 
   /**

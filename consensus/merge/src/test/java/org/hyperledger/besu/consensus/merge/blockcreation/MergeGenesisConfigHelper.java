@@ -14,13 +14,14 @@
  */
 package org.hyperledger.besu.consensus.merge.blockcreation;
 
-import org.hyperledger.besu.config.GenesisAllocation;
+import org.hyperledger.besu.config.GenesisAccount;
 import org.hyperledger.besu.config.GenesisConfigFile;
 import org.hyperledger.besu.consensus.merge.MergeProtocolSchedule;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
+import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 
 import java.io.IOException;
 import java.net.URI;
@@ -48,17 +49,16 @@ public interface MergeGenesisConfigHelper {
   }
 
   default Stream<Address> genesisAllocations(final GenesisConfigFile configFile) {
-    return configFile
-        .streamAllocations()
-        .map(GenesisAllocation::getAddress)
-        .map(Address::fromHexString);
+    return configFile.streamAllocations().map(GenesisAccount::address);
   }
 
   default ProtocolSchedule getMergeProtocolSchedule() {
     return MergeProtocolSchedule.create(
         getPosGenesisConfigFile().getConfigOptions(),
         false,
-        MiningParameters.MINING_DISABLED,
-        new BadBlockManager());
+        MiningConfiguration.MINING_DISABLED,
+        new BadBlockManager(),
+        false,
+        new NoOpMetricsSystem());
   }
 }

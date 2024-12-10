@@ -60,7 +60,7 @@ import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.chain.MinedBlockObserver;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.Util;
 import org.hyperledger.besu.ethereum.eth.EthProtocol;
 import org.hyperledger.besu.ethereum.eth.SnapProtocol;
@@ -74,6 +74,7 @@ import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 import org.hyperledger.besu.plugin.services.BesuEvents;
 import org.hyperledger.besu.util.Subscribers;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -111,8 +112,10 @@ public class IbftBesuControllerBuilder extends BftBesuControllerBuilder {
 
   @Override
   protected JsonRpcMethods createAdditionalJsonRpcMethodFactory(
-      final ProtocolContext protocolContext) {
-    return new IbftJsonRpcMethods(protocolContext);
+      final ProtocolContext protocolContext,
+      final ProtocolSchedule protocolSchedule,
+      final MiningConfiguration miningConfiguration) {
+    return new IbftJsonRpcMethods(protocolContext, protocolSchedule, miningConfiguration);
   }
 
   @Override
@@ -138,7 +141,7 @@ public class IbftBesuControllerBuilder extends BftBesuControllerBuilder {
       final ProtocolSchedule protocolSchedule,
       final ProtocolContext protocolContext,
       final TransactionPool transactionPool,
-      final MiningParameters miningParameters,
+      final MiningConfiguration miningConfiguration,
       final SyncState syncState,
       final EthProtocolManager ethProtocolManager) {
     final MutableBlockchain blockchain = protocolContext.getBlockchain();
@@ -153,7 +156,7 @@ public class IbftBesuControllerBuilder extends BftBesuControllerBuilder {
             protocolContext,
             bftProtocolSchedule,
             forksSchedule,
-            miningParameters,
+            miningConfiguration,
             localAddress,
             bftExtraDataCodec().get(),
             ethProtocolManager.ethContext().getScheduler());
@@ -180,7 +183,10 @@ public class IbftBesuControllerBuilder extends BftBesuControllerBuilder {
             Util.publicKeyToAddress(nodeKey.getPublicKey()),
             proposerSelector,
             uniqueMessageMulticaster,
-            new RoundTimer(bftEventQueue, bftConfig.getRequestTimeoutSeconds(), bftExecutors),
+            new RoundTimer(
+                bftEventQueue,
+                Duration.ofSeconds(bftConfig.getRequestTimeoutSeconds()),
+                bftExecutors),
             new BlockTimer(bftEventQueue, forksSchedule, bftExecutors, clock),
             blockCreatorFactory,
             clock);
@@ -241,15 +247,24 @@ public class IbftBesuControllerBuilder extends BftBesuControllerBuilder {
         .getBlockchain()
         .observeBlockAdded(
             o ->
-                miningParameters.setBlockPeriodSeconds(
+                miningConfiguration.setBlockPeriodSeconds(
                     forksSchedule
                         .getFork(o.getBlock().getHeader().getNumber() + 1)
                         .getValue()
                         .getBlockPeriodSeconds()));
 
-    if (syncState.isInitialSyncPhaseDone()) {
-      ibftMiningCoordinator.enable();
-    }
+    syncState.subscribeSyncStatus(
+        syncStatus -> {
+          if (syncState.syncTarget().isPresent()) {
+            // We're syncing so stop doing other stuff
+            LOG.info("Stopping IBFT mining coordinator while we are syncing");
+            ibftMiningCoordinator.stop();
+          } else {
+            LOG.info("Starting IBFT mining coordinator following sync");
+            ibftMiningCoordinator.enable();
+            ibftMiningCoordinator.start();
+          }
+        });
 
     syncState.subscribeCompletionReached(
         new BesuEvents.InitialSyncCompletionListener() {
@@ -288,8 +303,10 @@ public class IbftBesuControllerBuilder extends BftBesuControllerBuilder {
         isRevertReasonEnabled,
         bftExtraDataCodec().get(),
         evmConfiguration,
-        miningParameters,
-        badBlockManager);
+        miningConfiguration,
+        badBlockManager,
+        isParallelTxProcessingEnabled,
+        metricsSystem);
   }
 
   @Override

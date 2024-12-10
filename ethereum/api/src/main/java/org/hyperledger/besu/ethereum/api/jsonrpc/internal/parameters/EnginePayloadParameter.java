@@ -17,6 +17,7 @@ package org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.datatypes.parameters.UnsignedLongParameter;
 import org.hyperledger.besu.evm.log.LogsBloomFilter;
 
 import java.util.List;
@@ -43,8 +44,6 @@ public class EnginePayloadParameter {
   private final List<WithdrawalParameter> withdrawals;
   private final Long blobGasUsed;
   private final String excessBlobGas;
-  private final List<DepositParameter> deposits;
-  private final List<WithdrawalRequestParameter> withdrawalRequests;
 
   /**
    * Creates an instance of EnginePayloadParameter.
@@ -66,8 +65,6 @@ public class EnginePayloadParameter {
    * @param withdrawals Array of Withdrawal
    * @param blobGasUsed QUANTITY, 64 Bits
    * @param excessBlobGas QUANTITY, 64 Bits
-   * @param deposits List of deposit parameters.
-   * @param withdrawalRequestParameters List of withdrawal requests parameters.
    */
   @JsonCreator
   public EnginePayloadParameter(
@@ -87,10 +84,7 @@ public class EnginePayloadParameter {
       @JsonProperty("transactions") final List<String> transactions,
       @JsonProperty("withdrawals") final List<WithdrawalParameter> withdrawals,
       @JsonProperty("blobGasUsed") final UnsignedLongParameter blobGasUsed,
-      @JsonProperty("excessBlobGas") final String excessBlobGas,
-      @JsonProperty("depositReceipts") final List<DepositParameter> deposits,
-      @JsonProperty("withdrawalRequests")
-          final List<WithdrawalRequestParameter> withdrawalRequestParameters) {
+      @JsonProperty("excessBlobGas") final String excessBlobGas) {
     this.blockHash = blockHash;
     this.parentHash = parentHash;
     this.feeRecipient = feeRecipient;
@@ -108,8 +102,6 @@ public class EnginePayloadParameter {
     this.withdrawals = withdrawals;
     this.blobGasUsed = blobGasUsed == null ? null : blobGasUsed.getValue();
     this.excessBlobGas = excessBlobGas;
-    this.deposits = deposits;
-    this.withdrawalRequests = withdrawalRequestParameters;
   }
 
   public Hash getBlockHash() {
@@ -178,13 +170,5 @@ public class EnginePayloadParameter {
 
   public String getExcessBlobGas() {
     return excessBlobGas;
-  }
-
-  public List<DepositParameter> getDeposits() {
-    return deposits;
-  }
-
-  public List<WithdrawalRequestParameter> getWithdrawalRequests() {
-    return withdrawalRequests;
   }
 }

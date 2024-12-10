@@ -15,11 +15,14 @@
 package org.hyperledger.besu.ethereum.api.graphql.internal.pojoadapter;
 
 import org.hyperledger.besu.datatypes.Hash;
+import org.hyperledger.besu.ethereum.api.graphql.GraphQLContextType;
 import org.hyperledger.besu.ethereum.api.query.BlockWithMetadata;
 import org.hyperledger.besu.ethereum.api.query.BlockchainQueries;
+import org.hyperledger.besu.ethereum.api.query.TransactionReceiptWithMetadata;
 import org.hyperledger.besu.ethereum.api.query.TransactionWithMetadata;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.Difficulty;
+import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,9 +30,24 @@ import java.util.Optional;
 
 import graphql.schema.DataFetchingEnvironment;
 
+/**
+ * This class is an adapter for the BlockWithMetadata class.
+ *
+ * <p>It extends the BlockAdapterBase class and provides methods to get the transaction count, total
+ * difficulty, ommer count, ommers, transactions, and specific ommer and transaction at a given
+ * index associated with a block.
+ */
 @SuppressWarnings("unused") // reflected by GraphQL
 public class NormalBlockAdapter extends BlockAdapterBase {
 
+  /**
+   * Constructor for NormalBlockAdapter.
+   *
+   * <p>It initializes the blockWithMetaData field with the provided argument and calls the parent
+   * constructor with the header of the provided blockWithMetaData.
+   *
+   * @param blockWithMetaData the block with metadata to be adapted.
+   */
   public NormalBlockAdapter(
       final BlockWithMetadata<TransactionWithMetadata, Hash> blockWithMetaData) {
     super(blockWithMetaData.getHeader());
@@ -38,18 +56,39 @@ public class NormalBlockAdapter extends BlockAdapterBase {
 
   private final BlockWithMetadata<TransactionWithMetadata, Hash> blockWithMetaData;
 
+  /**
+   * Returns the transaction count of the block.
+   *
+   * @return the transaction count of the block.
+   */
   public Optional<Integer> getTransactionCount() {
     return Optional.of(blockWithMetaData.getTransactions().size());
   }
 
+  /**
+   * Returns the total difficulty of the block.
+   *
+   * @return the total difficulty of the block.
+   */
   public Difficulty getTotalDifficulty() {
     return blockWithMetaData.getTotalDifficulty();
   }
 
+  /**
+   * Returns the ommer count of the block.
+   *
+   * @return the ommer count of the block.
+   */
   public Optional<Integer> getOmmerCount() {
     return Optional.of(blockWithMetaData.getOmmers().size());
   }
 
+  /**
+   * Returns the ommers of the block.
+   *
+   * @param environment the data fetching environment.
+   * @return a list of UncleBlockAdapter for the ommers of the block.
+   */
   public List<UncleBlockAdapter> getOmmers(final DataFetchingEnvironment environment) {
     final BlockchainQueries query = getBlockchainQueries(environment);
     final List<Hash> ommers = blockWithMetaData.getOmmers();
@@ -63,6 +102,12 @@ public class NormalBlockAdapter extends BlockAdapterBase {
     return results;
   }
 
+  /**
+   * Returns the ommer at a given index of the block.
+   *
+   * @param environment the data fetching environment.
+   * @return an UncleBlockAdapter for the ommer at the given index of the block.
+   */
   public Optional<UncleBlockAdapter> getOmmerAt(final DataFetchingEnvironment environment) {
     final BlockchainQueries query = getBlockchainQueries(environment);
     final int index = ((Number) environment.getArgument("index")).intValue();
@@ -75,15 +120,41 @@ public class NormalBlockAdapter extends BlockAdapterBase {
     return Optional.empty();
   }
 
-  public List<TransactionAdapter> getTransactions() {
+  /**
+   * Returns a list of TransactionAdapter objects for the transactions in the block.
+   *
+   * <p>Each TransactionAdapter object is created by adapting a TransactionWithMetadata object.
+   *
+   * @param environment the data fetching environment.
+   * @return a list of TransactionAdapter objects for the transactions in the block.
+   */
+  public List<TransactionAdapter> getTransactions(final DataFetchingEnvironment environment) {
+    final BlockchainQueries query = getBlockchainQueries(environment);
+    final Hash hash = blockWithMetaData.getHeader().getHash();
+    final ProtocolSchedule protocolSchedule =
+        environment.getGraphQlContext().get(GraphQLContextType.PROTOCOL_SCHEDULE);
+
     final List<TransactionWithMetadata> trans = blockWithMetaData.getTransactions();
+    final List<TransactionReceiptWithMetadata> transReceipts =
+        query.transactionReceiptsByBlockHash(hash, protocolSchedule).get();
+
     final List<TransactionAdapter> results = new ArrayList<>();
-    for (final TransactionWithMetadata tran : trans) {
-      results.add(new TransactionAdapter(tran));
+    for (int i = 0; i < trans.size(); i++) {
+      results.add(new TransactionAdapter(trans.get(i), transReceipts.get(i)));
     }
     return results;
   }
 
+  /**
+   * Returns a TransactionAdapter object for the transaction at the given index in the block.
+   *
+   * <p>The index is retrieved from the data fetching environment. If there is no transaction at the
+   * given index, an empty Optional is returned.
+   *
+   * @param environment the data fetching environment.
+   * @return an Optional containing a TransactionAdapter object for the transaction at the given
+   *     index in the block, or an empty Optional if there is no transaction at the given index.
+   */
   public Optional<TransactionAdapter> getTransactionAt(final DataFetchingEnvironment environment) {
     final int index = ((Number) environment.getArgument("index")).intValue();
     final List<TransactionWithMetadata> trans = blockWithMetaData.getTransactions();

@@ -34,8 +34,9 @@ import org.hyperledger.besu.ethereum.ProtocolContext;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.BlockAddedObserver;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
+import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Synchronizer;
 import org.hyperledger.besu.ethereum.eth.EthProtocolConfiguration;
@@ -44,6 +45,7 @@ import org.hyperledger.besu.ethereum.eth.manager.EthMessages;
 import org.hyperledger.besu.ethereum.eth.manager.EthPeers;
 import org.hyperledger.besu.ethereum.eth.manager.EthProtocolManager;
 import org.hyperledger.besu.ethereum.eth.manager.EthScheduler;
+import org.hyperledger.besu.ethereum.eth.sync.SyncMode;
 import org.hyperledger.besu.ethereum.eth.sync.SynchronizerConfiguration;
 import org.hyperledger.besu.ethereum.eth.sync.state.SyncState;
 import org.hyperledger.besu.ethereum.eth.transactions.layered.LayeredPendingTransactions;
@@ -102,12 +104,14 @@ public class TransactionPoolFactoryTest {
   @BeforeEach
   public void setup() {
     when(blockchain.getBlockHashByNumber(anyLong())).thenReturn(Optional.of(mock(Hash.class)));
+    final Block mockBlock = mock(Block.class);
+    when(mockBlock.getHash()).thenReturn(Hash.ZERO);
+    when(blockchain.getGenesisBlock()).thenReturn(mockBlock);
     when(context.getBlockchain()).thenReturn(blockchain);
 
     final NodeMessagePermissioningProvider nmpp = (destinationEnode, code) -> true;
     ethPeers =
         new EthPeers(
-            "ETH",
             () -> protocolSpec,
             TestClock.fixed(),
             new NoOpMetricsSystem(),
@@ -116,7 +120,9 @@ public class TransactionPoolFactoryTest {
             Bytes.random(64),
             25,
             25,
-            false);
+            false,
+            SyncMode.SNAP,
+            new ForkIdManager(blockchain, Collections.emptyList(), Collections.emptyList(), false));
     when(ethContext.getEthMessages()).thenReturn(ethMessages);
     when(ethContext.getEthPeers()).thenReturn(ethPeers);
 
@@ -366,13 +372,15 @@ public class TransactionPoolFactoryTest {
     schedule =
         new ProtocolScheduleBuilder(
                 config,
-                DEFAULT_CHAIN_ID,
+                Optional.of(DEFAULT_CHAIN_ID),
                 ProtocolSpecAdapters.create(0, Function.identity()),
                 PrivacyParameters.DEFAULT,
                 false,
                 EvmConfiguration.DEFAULT,
-                MiningParameters.MINING_DISABLED,
-                new BadBlockManager())
+                MiningConfiguration.MINING_DISABLED,
+                new BadBlockManager(),
+                false,
+                new NoOpMetricsSystem())
             .createProtocolSchedule();
 
     protocolContext = mock(ProtocolContext.class);
@@ -404,7 +412,7 @@ public class TransactionPoolFactoryTest {
         transactionsMessageSender,
         newPooledTransactionHashesMessageSender,
         new BlobCache(),
-        MiningParameters.newDefault());
+        MiningConfiguration.newDefault());
   }
 
   private TransactionPool createAndEnableTransactionPool(

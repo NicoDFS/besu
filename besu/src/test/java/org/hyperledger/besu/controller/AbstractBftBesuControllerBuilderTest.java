@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
+import org.hyperledger.besu.components.BesuComponent;
 import org.hyperledger.besu.config.CheckpointConfigOptions;
 import org.hyperledger.besu.config.GenesisConfigFile;
 import org.hyperledger.besu.config.GenesisConfigOptions;
@@ -28,12 +29,13 @@ import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.GasLimitCalculator;
+import org.hyperledger.besu.ethereum.api.ImmutableApiConfiguration;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockBody;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderFunctions;
 import org.hyperledger.besu.ethereum.core.Difficulty;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.eth.EthProtocolConfiguration;
 import org.hyperledger.besu.ethereum.eth.sync.SynchronizerConfiguration;
@@ -89,7 +91,7 @@ public abstract class AbstractBftBesuControllerBuilderTest {
       TransactionPoolConfiguration.DEFAULT;
   private final ObservableMetricsSystem observableMetricsSystem = new NoOpMetricsSystem();
   protected final ObjectMapper objectMapper = new ObjectMapper();
-  private final MiningParameters miningParameters = MiningParameters.newDefault();
+  private final MiningConfiguration miningConfiguration = MiningConfiguration.newDefault();
   @TempDir Path tempDir;
 
   @BeforeEach
@@ -104,7 +106,6 @@ public abstract class AbstractBftBesuControllerBuilderTest {
     lenient().when(genesisConfigFile.getDifficulty()).thenReturn(Bytes.of(0).toHexString());
     lenient().when(genesisConfigFile.getMixHash()).thenReturn(Hash.ZERO.toHexString());
     lenient().when(genesisConfigFile.getNonce()).thenReturn(Long.toHexString(1));
-    lenient().when(genesisConfigFile.getConfigOptions(any())).thenReturn(genesisConfigOptions);
     lenient().when(genesisConfigFile.getConfigOptions()).thenReturn(genesisConfigOptions);
     lenient().when(genesisConfigOptions.getCheckpointOptions()).thenReturn(checkpointConfigOptions);
     lenient()
@@ -146,7 +147,7 @@ public abstract class AbstractBftBesuControllerBuilderTest {
             .synchronizerConfiguration(synchronizerConfiguration)
             .ethProtocolConfiguration(ethProtocolConfiguration)
             .networkId(networkId)
-            .miningParameters(miningParameters)
+            .miningParameters(miningConfiguration)
             .metricsSystem(observableMetricsSystem)
             .privacyParameters(privacyParameters)
             .dataDirectory(tempDir)
@@ -157,7 +158,9 @@ public abstract class AbstractBftBesuControllerBuilderTest {
             .storageProvider(storageProvider)
             .gasLimitCalculator(gasLimitCalculator)
             .evmConfiguration(EvmConfiguration.DEFAULT)
-            .networkConfiguration(NetworkingConfiguration.create());
+            .besuComponent(mock(BesuComponent.class))
+            .networkConfiguration(NetworkingConfiguration.create())
+            .apiConfiguration(ImmutableApiConfiguration.builder().build());
   }
 
   protected abstract void setupBftGenesisConfigFile() throws JsonProcessingException;
@@ -198,8 +201,8 @@ public abstract class AbstractBftBesuControllerBuilderTest {
 
     protocolContext.getBlockchain().appendBlock(block1, List.of());
 
-    assertThat(miningParameters.getBlockPeriodSeconds()).isNotEmpty().hasValue(2);
-    assertThat(miningParameters.getBlockTxsSelectionMaxTime()).isEqualTo(2000 * 75 / 100);
+    assertThat(miningConfiguration.getBlockPeriodSeconds()).isNotEmpty().hasValue(2);
+    assertThat(miningConfiguration.getBlockTxsSelectionMaxTime()).isEqualTo(2000 * 75 / 100);
   }
 
   protected abstract BlockHeaderFunctions getBlockHeaderFunctions();

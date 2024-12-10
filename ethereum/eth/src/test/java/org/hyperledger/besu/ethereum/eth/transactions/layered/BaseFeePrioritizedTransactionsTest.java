@@ -26,7 +26,7 @@ import org.hyperledger.besu.crypto.KeyPair;
 import org.hyperledger.besu.datatypes.TransactionType;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.TransactionTestFixture;
 import org.hyperledger.besu.ethereum.eth.transactions.BlobCache;
@@ -60,17 +60,18 @@ public class BaseFeePrioritizedTransactionsTest extends AbstractPrioritizedTrans
       final TransactionPoolMetrics txPoolMetrics,
       final BiFunction<PendingTransaction, PendingTransaction, Boolean>
           transactionReplacementTester,
-      final MiningParameters miningParameters) {
+      final MiningConfiguration miningConfiguration) {
 
     return new BaseFeePrioritizedTransactions(
         poolConfig,
         this::mockBlockHeader,
+        ethScheduler,
         nextLayer,
         txPoolMetrics,
         transactionReplacementTester,
         EIP1559_FEE_MARKET,
         new BlobCache(),
-        miningParameters);
+        miningConfiguration);
   }
 
   @Override
@@ -163,7 +164,7 @@ public class BaseFeePrioritizedTransactionsTest extends AbstractPrioritizedTrans
 
   @Test
   public void txBelowCurrentMineableMinPriorityFeeIsNotPrioritized() {
-    miningParameters.setMinPriorityFeePerGas(Wei.of(5));
+    miningConfiguration.setMinPriorityFeePerGas(Wei.of(5));
     final PendingTransaction lowPriorityFeeTx =
         createRemotePendingTransaction(
             createTransaction(0, DEFAULT_MIN_GAS_PRICE.subtract(1), KEYS1));
@@ -174,7 +175,7 @@ public class BaseFeePrioritizedTransactionsTest extends AbstractPrioritizedTrans
 
   @Test
   public void txWithPriorityBelowCurrentMineableMinPriorityFeeIsPrioritized() {
-    miningParameters.setMinPriorityFeePerGas(Wei.of(5));
+    miningConfiguration.setMinPriorityFeePerGas(Wei.of(5));
     final PendingTransaction lowGasPriceTx =
         createRemotePendingTransaction(
             createTransaction(0, DEFAULT_MIN_GAS_PRICE.subtract(1), KEYS1), true);

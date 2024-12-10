@@ -22,7 +22,7 @@ import org.hyperledger.besu.cryptoservices.NodeKey;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Util;
 import org.hyperledger.besu.ethereum.mainnet.BlockHeaderValidator;
@@ -36,14 +36,13 @@ import org.hyperledger.besu.ethereum.mainnet.ProtocolSpecBuilder;
 import org.hyperledger.besu.ethereum.mainnet.feemarket.BaseFeeMarket;
 import org.hyperledger.besu.ethereum.mainnet.feemarket.FeeMarket;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.plugin.services.MetricsSystem;
 
 import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
-
-import com.google.common.annotations.VisibleForTesting;
 
 /** Defines the protocol behaviours for a blockchain using Clique. */
 public class CliqueProtocolSchedule {
@@ -62,8 +61,11 @@ public class CliqueProtocolSchedule {
    * @param privacyParameters the privacy parameters
    * @param isRevertReasonEnabled the is revert reason enabled
    * @param evmConfiguration the evm configuration
-   * @param miningParameters the mining parameters
+   * @param miningConfiguration the mining configuration
    * @param badBlockManager the cache to use to keep invalid blocks
+   * @param isParallelTxProcessingEnabled indicates whether parallel transaction is enabled
+   * @param metricsSystem A metricSystem instance to be able to expose metrics in the underlying
+   *     calls
    * @return the protocol schedule
    */
   public static ProtocolSchedule create(
@@ -73,8 +75,10 @@ public class CliqueProtocolSchedule {
       final PrivacyParameters privacyParameters,
       final boolean isRevertReasonEnabled,
       final EvmConfiguration evmConfiguration,
-      final MiningParameters miningParameters,
-      final BadBlockManager badBlockManager) {
+      final MiningConfiguration miningConfiguration,
+      final BadBlockManager badBlockManager,
+      final boolean isParallelTxProcessingEnabled,
+      final MetricsSystem metricsSystem) {
 
     final CliqueConfigOptions cliqueConfig = config.getCliqueConfigOptions();
 
@@ -104,46 +108,16 @@ public class CliqueProtocolSchedule {
 
     return new ProtocolScheduleBuilder(
             config,
-            DEFAULT_CHAIN_ID,
+            Optional.of(DEFAULT_CHAIN_ID),
             specAdapters,
             privacyParameters,
             isRevertReasonEnabled,
             evmConfiguration,
-            miningParameters,
-            badBlockManager)
+            miningConfiguration,
+            badBlockManager,
+            isParallelTxProcessingEnabled,
+            metricsSystem)
         .createProtocolSchedule();
-  }
-
-  /**
-   * Create protocol schedule.
-   *
-   * @param config the config
-   * @param forksSchedule the transitions
-   * @param nodeKey the node key
-   * @param isRevertReasonEnabled the is revert reason enabled
-   * @param evmConfiguration the evm configuration
-   * @param miningParameters the mining parameters
-   * @param badBlockManager the cache to use to keep invalid blocks
-   * @return the protocol schedule
-   */
-  @VisibleForTesting
-  public static ProtocolSchedule create(
-      final GenesisConfigOptions config,
-      final ForksSchedule<CliqueConfigOptions> forksSchedule,
-      final NodeKey nodeKey,
-      final boolean isRevertReasonEnabled,
-      final EvmConfiguration evmConfiguration,
-      final MiningParameters miningParameters,
-      final BadBlockManager badBlockManager) {
-    return create(
-        config,
-        forksSchedule,
-        nodeKey,
-        PrivacyParameters.DEFAULT,
-        isRevertReasonEnabled,
-        evmConfiguration,
-        miningParameters,
-        badBlockManager);
   }
 
   private static ProtocolSpecBuilder applyCliqueSpecificModifications(

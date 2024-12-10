@@ -32,7 +32,6 @@ import org.hyperledger.besu.evm.worldstate.WorldUpdater;
 
 import java.io.PrintStream;
 import java.math.BigInteger;
-import java.nio.charset.StandardCharsets;
 import java.util.Deque;
 import java.util.List;
 
@@ -190,12 +189,11 @@ public class EvmToyCommand implements Runnable {
               .blockValues(new ToyBlockValues())
               .completer(c -> {})
               .miningBeneficiary(Address.ZERO)
-              .blockHashLookup((f, n) -> null)
+              .blockHashLookup(n -> null)
               .build();
 
       final MessageCallProcessor mcp = new MessageCallProcessor(evm, precompileContractRegistry);
-      final ContractCreationProcessor ccp =
-          new ContractCreationProcessor(evm.getGasCalculator(), evm, false, List.of(), 0);
+      final ContractCreationProcessor ccp = new ContractCreationProcessor(evm, false, List.of(), 0);
       stopwatch.start();
       Deque<MessageFrame> messageFrameStack = initialMessageFrame.getMessageFrameStack();
       while (!messageFrameStack.isEmpty()) {
@@ -209,9 +207,7 @@ public class EvmToyCommand implements Runnable {
             out.println(messageFrame.getExceptionalHaltReason().get());
           }
           if (messageFrame.getRevertReason().isPresent()) {
-            out.println(
-                new String(
-                    messageFrame.getRevertReason().get().toArrayUnsafe(), StandardCharsets.UTF_8));
+            out.println(messageFrame.getRevertReason().get().toHexString());
           }
         }
         if (messageFrameStack.isEmpty()) {

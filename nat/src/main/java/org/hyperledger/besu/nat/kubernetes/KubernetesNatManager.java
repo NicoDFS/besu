@@ -42,7 +42,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * This class describes the behaviour of the Kubernetes NAT manager. Kubernetes Nat manager add
+ * This class describes the behavior of the Kubernetes NAT manager. Kubernetes Nat manager add
  * support for Kubernetes’s NAT implementation when Besu is being run from a Kubernetes cluster
  */
 public class KubernetesNatManager extends AbstractNatManager {
@@ -84,7 +84,7 @@ public class KubernetesNatManager extends AbstractNatManager {
       final V1Service service =
           api
               .listServiceForAllNamespaces(
-                  null, null, null, null, null, null, null, null, null, null)
+                  null, null, null, null, null, null, null, null, null, null, null)
               .getItems()
               .stream()
               .filter(

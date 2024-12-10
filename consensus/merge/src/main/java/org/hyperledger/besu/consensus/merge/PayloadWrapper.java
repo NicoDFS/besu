@@ -15,13 +15,70 @@
 package org.hyperledger.besu.consensus.merge;
 
 import org.hyperledger.besu.consensus.merge.blockcreation.PayloadIdentifier;
+import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.ethereum.core.BlockValueCalculator;
 import org.hyperledger.besu.ethereum.core.BlockWithReceipts;
+import org.hyperledger.besu.ethereum.core.Request;
 
-/**
- * Wrapper for payload plus extra info.
- *
- * @param payloadIdentifier Payload identifier
- * @param blockWithReceipts Block With Receipts
- */
-public record PayloadWrapper(
-    PayloadIdentifier payloadIdentifier, BlockWithReceipts blockWithReceipts) {}
+import java.util.List;
+import java.util.Optional;
+
+/** Wrapper for payload plus extra info. */
+public class PayloadWrapper {
+  private final PayloadIdentifier payloadIdentifier;
+  private final BlockWithReceipts blockWithReceipts;
+  private final Wei blockValue;
+  private final Optional<List<Request>> requests;
+
+  /**
+   * Construct a wrapper with the following fields.
+   *
+   * @param payloadIdentifier Payload identifier
+   * @param blockWithReceipts Block with receipts
+   */
+  public PayloadWrapper(
+      final PayloadIdentifier payloadIdentifier,
+      final BlockWithReceipts blockWithReceipts,
+      final Optional<List<Request>> requests) {
+    this.blockWithReceipts = blockWithReceipts;
+    this.payloadIdentifier = payloadIdentifier;
+    this.blockValue = BlockValueCalculator.calculateBlockValue(blockWithReceipts);
+    this.requests = requests;
+  }
+
+  /**
+   * Get the block value
+   *
+   * @return block value in Wei
+   */
+  public Wei blockValue() {
+    return blockValue;
+  }
+
+  /**
+   * Get this payload identifier
+   *
+   * @return payload identifier
+   */
+  public PayloadIdentifier payloadIdentifier() {
+    return payloadIdentifier;
+  }
+
+  /**
+   * Get the block with receipts
+   *
+   * @return block with receipts
+   */
+  public BlockWithReceipts blockWithReceipts() {
+    return blockWithReceipts;
+  }
+
+  /**
+   * Get the requests
+   *
+   * @return requests
+   */
+  public Optional<List<Request>> requests() {
+    return requests;
+  }
+}

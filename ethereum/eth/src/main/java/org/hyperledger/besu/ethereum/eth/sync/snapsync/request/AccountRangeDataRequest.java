@@ -31,9 +31,9 @@ import org.hyperledger.besu.ethereum.proof.WorldStateProofProvider;
 import org.hyperledger.besu.ethereum.rlp.RLP;
 import org.hyperledger.besu.ethereum.rlp.RLPInput;
 import org.hyperledger.besu.ethereum.trie.NodeUpdater;
+import org.hyperledger.besu.ethereum.trie.common.PmtStateTrieAccountValue;
 import org.hyperledger.besu.ethereum.trie.diffbased.bonsai.storage.BonsaiWorldStateKeyValueStorage;
 import org.hyperledger.besu.ethereum.worldstate.FlatDbMode;
-import org.hyperledger.besu.ethereum.worldstate.StateTrieAccountValue;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateKeyValueStorage;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateStorageCoordinator;
 
@@ -58,12 +58,12 @@ public class AccountRangeDataRequest extends SnapDataRequest {
 
   private static final Logger LOG = LoggerFactory.getLogger(AccountRangeDataRequest.class);
 
-  private final Bytes32 startKeyHash;
-  private final Bytes32 endKeyHash;
-  private final Optional<Bytes32> startStorageRange;
-  private final Optional<Bytes32> endStorageRange;
+  protected final Bytes32 startKeyHash;
+  protected final Bytes32 endKeyHash;
+  protected final Optional<Bytes32> startStorageRange;
+  protected final Optional<Bytes32> endStorageRange;
 
-  private final StackTrie stackTrie;
+  protected final StackTrie stackTrie;
   private Optional<Boolean> isProofValid;
 
   protected AccountRangeDataRequest(
@@ -170,6 +170,12 @@ public class AccountRangeDataRequest extends SnapDataRequest {
       } else {
         stackTrie.addElement(startKeyHash, proofs, accounts);
         isProofValid = Optional.of(true);
+        LOG.atDebug()
+            .setMessage("{} accounts received during sync for account range {} {}")
+            .addArgument(accounts.size())
+            .addArgument(startKeyHash)
+            .addArgument(endKeyHash)
+            .log();
       }
     }
   }
@@ -204,8 +210,8 @@ public class AccountRangeDataRequest extends SnapDataRequest {
 
     // find missing storages and code
     for (Map.Entry<Bytes32, Bytes> account : taskElement.keys().entrySet()) {
-      final StateTrieAccountValue accountValue =
-          StateTrieAccountValue.readFrom(RLP.input(account.getValue()));
+      final PmtStateTrieAccountValue accountValue =
+          PmtStateTrieAccountValue.readFrom(RLP.input(account.getValue()));
       if (!accountValue.getStorageRoot().equals(Hash.EMPTY_TRIE_HASH)) {
         childRequests.add(
             createStorageRangeDataRequest(

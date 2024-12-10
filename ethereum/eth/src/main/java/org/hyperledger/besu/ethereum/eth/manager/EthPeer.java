@@ -1,5 +1,5 @@
 /*
- * Copyright ConsenSys AG.
+ * Copyright contributors to Hyperledger Besu.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -85,7 +85,6 @@ public class EthPeer implements Comparable<EthPeer> {
 
   private Optional<BlockHeader> checkpointHeader = Optional.empty();
 
-  private final String protocolName;
   private final int maxMessageSize;
   private final Clock clock;
   private final List<NodeMessagePermissioningProvider> permissioningProviders;
@@ -103,6 +102,7 @@ public class EthPeer implements Comparable<EthPeer> {
   private final PeerReputation reputation = new PeerReputation();
   private final Map<PeerValidator, Boolean> validationStatus = new ConcurrentHashMap<>();
   private final Bytes id;
+  private boolean isServingSnap = false;
 
   private static final Map<Integer, Integer> roundMessages;
 
@@ -123,7 +123,6 @@ public class EthPeer implements Comparable<EthPeer> {
   @VisibleForTesting
   public EthPeer(
       final PeerConnection connection,
-      final String protocolName,
       final Consumer<EthPeer> onStatusesExchanged,
       final List<PeerValidator> peerValidators,
       final int maxMessageSize,
@@ -131,7 +130,6 @@ public class EthPeer implements Comparable<EthPeer> {
       final List<NodeMessagePermissioningProvider> permissioningProviders,
       final Bytes localNodeId) {
     this.connection = connection;
-    this.protocolName = protocolName;
     this.maxMessageSize = maxMessageSize;
     this.clock = clock;
     this.permissioningProviders = permissioningProviders;
@@ -152,21 +150,23 @@ public class EthPeer implements Comparable<EthPeer> {
         getAgreedCapabilities().stream().anyMatch(EthProtocol::isEth66Compatible);
     // eth protocol
     requestManagers.put(
-        protocolName,
+        EthProtocol.NAME,
         Map.ofEntries(
             Map.entry(
                 EthPV62.GET_BLOCK_HEADERS,
-                new RequestManager(this, supportsRequestId, protocolName)),
+                new RequestManager(this, supportsRequestId, EthProtocol.NAME)),
             Map.entry(
                 EthPV62.GET_BLOCK_BODIES,
-                new RequestManager(this, supportsRequestId, protocolName)),
+                new RequestManager(this, supportsRequestId, EthProtocol.NAME)),
             Map.entry(
-                EthPV63.GET_RECEIPTS, new RequestManager(this, supportsRequestId, protocolName)),
+                EthPV63.GET_RECEIPTS,
+                new RequestManager(this, supportsRequestId, EthProtocol.NAME)),
             Map.entry(
-                EthPV63.GET_NODE_DATA, new RequestManager(this, supportsRequestId, protocolName)),
+                EthPV63.GET_NODE_DATA,
+                new RequestManager(this, supportsRequestId, EthProtocol.NAME)),
             Map.entry(
                 EthPV65.GET_POOLED_TRANSACTIONS,
-                new RequestManager(this, supportsRequestId, protocolName))));
+                new RequestManager(this, supportsRequestId, EthProtocol.NAME))));
   }
 
   private void initSnapRequestManagers() {
@@ -236,7 +236,7 @@ public class EthPeer implements Comparable<EthPeer> {
   }
 
   public RequestManager.ResponseStream send(final MessageData messageData) throws PeerNotConnected {
-    return send(messageData, this.protocolName);
+    return send(messageData, EthProtocol.NAME);
   }
 
   public RequestManager.ResponseStream send(
@@ -290,12 +290,13 @@ public class EthPeer implements Comparable<EthPeer> {
     if (messageData.getSize() > maxMessageSize) {
       // This is a bug or else a misconfiguration of the max message size.
       LOG.error(
-          "Sending {} message to peer ({}) which exceeds local message size limit of {} bytes.  Message code: {}, Message Size: {}",
+          "Dropping {} message to peer ({}) which exceeds local message size limit of {} bytes.  Message code: {}, Message Size: {}",
           protocolName,
           this,
           maxMessageSize,
           messageData.getCode(),
           messageData.getSize());
+      return null;
     }
 
     if (requestManagers.containsKey(protocolName)) {
@@ -315,7 +316,7 @@ public class EthPeer implements Comparable<EthPeer> {
     final GetBlockHeadersMessage message =
         GetBlockHeadersMessage.create(hash, maxHeaders, skip, reverse);
     final RequestManager requestManager =
-        requestManagers.get(protocolName).get(EthPV62.GET_BLOCK_HEADERS);
+        requestManagers.get(EthProtocol.NAME).get(EthPV62.GET_BLOCK_HEADERS);
     return sendRequest(requestManager, message);
   }
 
@@ -324,32 +325,34 @@ public class EthPeer implements Comparable<EthPeer> {
       throws PeerNotConnected {
     final GetBlockHeadersMessage message =
         GetBlockHeadersMessage.create(blockNumber, maxHeaders, skip, reverse);
-    return sendRequest(requestManagers.get(protocolName).get(EthPV62.GET_BLOCK_HEADERS), message);
+    return sendRequest(
+        requestManagers.get(EthProtocol.NAME).get(EthPV62.GET_BLOCK_HEADERS), message);
   }
 
   public RequestManager.ResponseStream getBodies(final List<Hash> blockHashes)
       throws PeerNotConnected {
     final GetBlockBodiesMessage message = GetBlockBodiesMessage.create(blockHashes);
-    return sendRequest(requestManagers.get(protocolName).get(EthPV62.GET_BLOCK_BODIES), message);
+    return sendRequest(
+        requestManagers.get(EthProtocol.NAME).get(EthPV62.GET_BLOCK_BODIES), message);
   }
 
   public RequestManager.ResponseStream getReceipts(final List<Hash> blockHashes)
       throws PeerNotConnected {
     final GetReceiptsMessage message = GetReceiptsMessage.create(blockHashes);
-    return sendRequest(requestManagers.get(protocolName).get(EthPV63.GET_RECEIPTS), message);
+    return sendRequest(requestManagers.get(EthProtocol.NAME).get(EthPV63.GET_RECEIPTS), message);
   }
 
   public RequestManager.ResponseStream getNodeData(final Iterable<Hash> nodeHashes)
       throws PeerNotConnected {
     final GetNodeDataMessage message = GetNodeDataMessage.create(nodeHashes);
-    return sendRequest(requestManagers.get(protocolName).get(EthPV63.GET_NODE_DATA), message);
+    return sendRequest(requestManagers.get(EthProtocol.NAME).get(EthPV63.GET_NODE_DATA), message);
   }
 
   public RequestManager.ResponseStream getPooledTransactions(final List<Hash> hashes)
       throws PeerNotConnected {
     final GetPooledTransactionsMessage message = GetPooledTransactionsMessage.create(hashes);
     return sendRequest(
-        requestManagers.get(protocolName).get(EthPV65.GET_POOLED_TRANSACTIONS), message);
+        requestManagers.get(EthProtocol.NAME).get(EthPV65.GET_POOLED_TRANSACTIONS), message);
   }
 
   public RequestManager.ResponseStream getSnapAccountRange(
@@ -391,6 +394,14 @@ public class EthPeer implements Comparable<EthPeer> {
     getTrieNodes.setRootHash(Optional.of(stateRoot));
     return sendRequest(
         requestManagers.get(SnapProtocol.NAME).get(SnapV1.GET_TRIE_NODES), getTrieNodes);
+  }
+
+  public void setIsServingSnap(final boolean isServingSnap) {
+    this.isServingSnap = isServingSnap;
+  }
+
+  public boolean isServingSnap() {
+    return isServingSnap;
   }
 
   private RequestManager.ResponseStream sendRequest(
@@ -437,7 +448,7 @@ public class EthPeer implements Comparable<EthPeer> {
         localRequestManager -> localRequestManager.dispatchResponse(ethMessage),
         () -> {
           LOG.trace(
-              "Message {} not expected has just been received for protocol {}, {} ",
+              "Request message {} has just been received for protocol {}, peer {} ",
               messageCode,
               protocolName,
               this);
@@ -451,7 +462,7 @@ public class EthPeer implements Comparable<EthPeer> {
    * @param ethMessage the Eth message to dispatch
    */
   void dispatch(final EthMessage ethMessage) {
-    dispatch(ethMessage, protocolName);
+    dispatch(ethMessage, EthProtocol.NAME);
   }
 
   /**
@@ -577,14 +588,10 @@ public class EthPeer implements Comparable<EthPeer> {
     return lastProtocolVersion.get();
   }
 
-  public String getProtocolName() {
-    return protocolName;
-  }
-
   /**
-   * Return A read-only snapshot of this peer's current {@code chainState} }
+   * Return A read-only snapshot of this peer's current {@code chainState}
    *
-   * @return A read-only snapshot of this peer's current {@code chainState} }
+   * @return A read-only snapshot of this peer's current {@code chainState}
    */
   public ChainHeadEstimate chainStateSnapshot() {
     return chainHeadState.getSnapshot();
@@ -629,14 +636,17 @@ public class EthPeer implements Comparable<EthPeer> {
   @Override
   public String toString() {
     return String.format(
-        "PeerId: %s %s, validated? %s, disconnected? %s, client: %s, %s, %s",
+        "PeerId: %s %s, validated? %s, disconnected? %s, client: %s, %s, %s, isServingSnap %s, has height %s, connected for %s ms",
         getLoggableId(),
         reputation,
         isFullyValidated(),
         isDisconnected(),
         connection.getPeerInfo().getClientId(),
         connection,
-        connection.getPeer().getEnodeURLString());
+        connection.getPeer().getEnodeURLString(),
+        isServingSnap,
+        chainHeadState.getEstimatedHeight(),
+        System.currentTimeMillis() - connection.getInitiatedAt());
   }
 
   @Nonnull
@@ -698,7 +708,11 @@ public class EthPeer implements Comparable<EthPeer> {
       }
     }
     // Otherwise, keep older connection
-    LOG.trace("comparing timestamps " + a.getInitiatedAt() + " with " + b.getInitiatedAt());
+    LOG.atTrace()
+        .setMessage("comparing timestamps {} with {}")
+        .addArgument(a.getInitiatedAt())
+        .addArgument(b.getInitiatedAt())
+        .log();
     return a.getInitiatedAt() < b.getInitiatedAt() ? -1 : 1;
   }
 

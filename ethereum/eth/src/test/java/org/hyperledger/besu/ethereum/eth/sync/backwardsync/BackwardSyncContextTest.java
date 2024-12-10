@@ -36,10 +36,11 @@ import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockDataGenerator;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.TransactionReceipt;
 import org.hyperledger.besu.ethereum.eth.manager.EthContext;
 import org.hyperledger.besu.ethereum.eth.manager.EthProtocolManager;
+import org.hyperledger.besu.ethereum.eth.manager.EthProtocolManagerTestBuilder;
 import org.hyperledger.besu.ethereum.eth.manager.EthProtocolManagerTestUtil;
 import org.hyperledger.besu.ethereum.eth.manager.RespondingEthPeer;
 import org.hyperledger.besu.ethereum.eth.sync.state.SyncState;
@@ -48,6 +49,7 @@ import org.hyperledger.besu.ethereum.mainnet.MainnetProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.ethereum.referencetests.ForestReferenceTestWorldState;
+import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
 import org.hyperledger.besu.services.kvstore.InMemoryKeyValueStorage;
 
@@ -93,7 +95,11 @@ public class BackwardSyncContextTest {
   @Spy
   private ProtocolSchedule protocolSchedule =
       MainnetProtocolSchedule.fromConfig(
-          new StubGenesisConfigOptions(), MiningParameters.MINING_DISABLED, new BadBlockManager());
+          new StubGenesisConfigOptions(),
+          MiningConfiguration.MINING_DISABLED,
+          new BadBlockManager(),
+          false,
+          new NoOpMetricsSystem());
 
   @Spy
   private ProtocolSpec protocolSpec =
@@ -139,7 +145,11 @@ public class BackwardSyncContextTest {
       }
     }
     when(protocolContext.getBlockchain()).thenReturn(localBlockchain);
-    EthProtocolManager ethProtocolManager = EthProtocolManagerTestUtil.create();
+    EthProtocolManager ethProtocolManager =
+        EthProtocolManagerTestBuilder.builder()
+            .setProtocolSchedule(protocolSchedule)
+            .setBlockchain(localBlockchain)
+            .build();
 
     peer = EthProtocolManagerTestUtil.createPeer(ethProtocolManager);
     EthContext ethContext = ethProtocolManager.ethContext();
@@ -155,7 +165,8 @@ public class BackwardSyncContextTest {
                           // use forest-based worldstate since it does not require
                           // blockheader stateroot to match actual worldstate root
                           ForestReferenceTestWorldState.create(Collections.emptyMap()),
-                          blockDataGenerator.receipts(block))));
+                          blockDataGenerator.receipts(block),
+                          Optional.empty())));
             });
 
     backwardChain = inMemoryBackwardChain();

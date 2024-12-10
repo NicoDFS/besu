@@ -16,14 +16,20 @@ package org.hyperledger.besu.ethereum.difficulty.fixed;
 
 import org.hyperledger.besu.config.GenesisConfigOptions;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolScheduleBuilder;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpecAdapters;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.plugin.services.MetricsSystem;
 
-/** A ProtocolSchedule which behaves similarly to MainNet, but with a much reduced difficulty. */
+import java.util.Optional;
+
+/**
+ * A ProtocolSchedule which behaves similarly to pre-merge MainNet, but with a much reduced
+ * difficulty.
+ */
 public class FixedDifficultyProtocolSchedule {
 
   public static ProtocolSchedule create(
@@ -31,10 +37,13 @@ public class FixedDifficultyProtocolSchedule {
       final PrivacyParameters privacyParameters,
       final boolean isRevertReasonEnabled,
       final EvmConfiguration evmConfiguration,
-      final MiningParameters miningParameters,
-      final BadBlockManager badBlockManager) {
+      final MiningConfiguration miningConfiguration,
+      final BadBlockManager badBlockManager,
+      final boolean isParallelTxProcessingEnabled,
+      final MetricsSystem metricsSystem) {
     return new ProtocolScheduleBuilder(
             config,
+            Optional.empty(),
             ProtocolSpecAdapters.create(
                 0,
                 builder ->
@@ -42,8 +51,10 @@ public class FixedDifficultyProtocolSchedule {
             privacyParameters,
             isRevertReasonEnabled,
             evmConfiguration,
-            miningParameters,
-            badBlockManager)
+            miningConfiguration,
+            badBlockManager,
+            isParallelTxProcessingEnabled,
+            metricsSystem)
         .createProtocolSchedule();
   }
 
@@ -51,28 +62,36 @@ public class FixedDifficultyProtocolSchedule {
       final GenesisConfigOptions config,
       final boolean isRevertReasonEnabled,
       final EvmConfiguration evmConfiguration,
-      final MiningParameters miningParameters,
-      final BadBlockManager badBlockManager) {
+      final MiningConfiguration miningConfiguration,
+      final BadBlockManager badBlockManager,
+      final boolean isParallelTxProcessingEnabled,
+      final MetricsSystem metricsSystem) {
     return create(
         config,
         PrivacyParameters.DEFAULT,
         isRevertReasonEnabled,
         evmConfiguration,
-        miningParameters,
-        badBlockManager);
+        miningConfiguration,
+        badBlockManager,
+        isParallelTxProcessingEnabled,
+        metricsSystem);
   }
 
   public static ProtocolSchedule create(
       final GenesisConfigOptions config,
       final EvmConfiguration evmConfiguration,
-      final MiningParameters miningParameters,
-      final BadBlockManager badBlockManager) {
+      final MiningConfiguration miningConfiguration,
+      final BadBlockManager badBlockManager,
+      final boolean isParallelTxProcessingEnabled,
+      final MetricsSystem metricsSystem) {
     return create(
         config,
         PrivacyParameters.DEFAULT,
         false,
         evmConfiguration,
-        miningParameters,
-        badBlockManager);
+        miningConfiguration,
+        badBlockManager,
+        isParallelTxProcessingEnabled,
+        metricsSystem);
   }
 }

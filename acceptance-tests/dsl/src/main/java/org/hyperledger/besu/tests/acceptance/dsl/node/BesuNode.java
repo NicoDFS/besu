@@ -18,20 +18,20 @@ import static java.util.Collections.unmodifiableList;
 import static org.apache.tuweni.io.file.Files.copyResource;
 
 import org.hyperledger.besu.cli.config.NetworkName;
-import org.hyperledger.besu.config.MergeConfigOptions;
+import org.hyperledger.besu.config.MergeConfiguration;
 import org.hyperledger.besu.crypto.KeyPair;
 import org.hyperledger.besu.crypto.KeyPairUtil;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.ethereum.api.ApiConfiguration;
+import org.hyperledger.besu.ethereum.api.jsonrpc.InProcessRpcConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.JsonRpcConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.ipc.JsonRpcIpcConfiguration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.websocket.WebSocketConfiguration;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Util;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolConfiguration;
 import org.hyperledger.besu.ethereum.p2p.config.NetworkingConfiguration;
-import org.hyperledger.besu.ethereum.p2p.rlpx.connections.netty.TLSConfiguration;
 import org.hyperledger.besu.ethereum.permissioning.PermissioningConfiguration;
 import org.hyperledger.besu.ethereum.worldstate.DataStorageConfiguration;
 import org.hyperledger.besu.metrics.prometheus.MetricsConfiguration;
@@ -48,7 +48,6 @@ import org.hyperledger.besu.tests.acceptance.dsl.transaction.login.LoginRequestF
 import org.hyperledger.besu.tests.acceptance.dsl.transaction.miner.MinerRequestFactory;
 import org.hyperledger.besu.tests.acceptance.dsl.transaction.net.CustomRequestFactory;
 import org.hyperledger.besu.tests.acceptance.dsl.transaction.perm.PermissioningJsonRpcRequestFactory;
-import org.hyperledger.besu.tests.acceptance.dsl.transaction.privacy.PrivacyRequestFactory;
 import org.hyperledger.besu.tests.acceptance.dsl.transaction.txpool.TxPoolRequestFactory;
 
 import java.io.File;
@@ -96,12 +95,11 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
   private final Properties portsProperties = new Properties();
   private final Boolean p2pEnabled;
   private final int p2pPort;
-  private final Optional<TLSConfiguration> tlsConfiguration;
   private final NetworkingConfiguration networkingConfiguration;
   private final boolean revertReasonEnabled;
 
   private final String name;
-  private MiningParameters miningParameters;
+  private MiningConfiguration miningConfiguration;
   private TransactionPoolConfiguration txPoolConfiguration;
   private final List<String> runCommand;
   private PrivacyParameters privacyParameters = PrivacyParameters.DEFAULT;
@@ -109,6 +107,7 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
   private final Optional<JsonRpcConfiguration> engineRpcConfiguration;
   private final WebSocketConfiguration webSocketConfiguration;
   private final JsonRpcIpcConfiguration jsonRpcIpcConfiguration;
+  private final InProcessRpcConfiguration inProcessRpcConfiguration;
   private final MetricsConfiguration metricsConfiguration;
   private final DataStorageConfiguration dataStorageConfiguration;
   private Optional<PermissioningConfiguration> permissioningConfiguration;
@@ -127,6 +126,7 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
   private boolean useWsForJsonRpc = false;
   private String token = null;
   private final List<String> plugins = new ArrayList<>();
+  private final List<String> requestedPlugins;
   private final List<String> extraCLIOptions;
   private final List<String> staticNodes;
   private boolean isDnsEnabled = false;
@@ -137,12 +137,13 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
   public BesuNode(
       final String name,
       final Optional<Path> dataPath,
-      final MiningParameters miningParameters,
+      final MiningConfiguration miningConfiguration,
       final TransactionPoolConfiguration txPoolConfiguration,
       final JsonRpcConfiguration jsonRpcConfiguration,
       final Optional<JsonRpcConfiguration> engineRpcConfiguration,
       final WebSocketConfiguration webSocketConfiguration,
       final JsonRpcIpcConfiguration jsonRpcIpcConfiguration,
+      final InProcessRpcConfiguration inProcessRpcConfiguration,
       final MetricsConfiguration metricsConfiguration,
       final Optional<PermissioningConfiguration> permissioningConfiguration,
       final ApiConfiguration apiConfiguration,
@@ -153,7 +154,6 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
       final GenesisConfigurationProvider genesisConfigProvider,
       final boolean p2pEnabled,
       final int p2pPort,
-      final Optional<TLSConfiguration> tlsConfiguration,
       final NetworkingConfiguration networkingConfiguration,
       final boolean discoveryEnabled,
       final boolean bootnodeEligible,
@@ -161,6 +161,7 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
       final boolean secp256k1Native,
       final boolean altbn128Native,
       final List<String> plugins,
+      final List<String> requestedPlugins,
       final List<String> extraCLIOptions,
       final List<String> staticNodes,
       final boolean isDnsEnabled,
@@ -187,12 +188,13 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
         },
         () -> this.keyPair = KeyPairUtil.loadKeyPair(homeDirectory));
     this.name = name;
-    this.miningParameters = miningParameters;
+    this.miningConfiguration = miningConfiguration;
     this.txPoolConfiguration = txPoolConfiguration;
     this.jsonRpcConfiguration = jsonRpcConfiguration;
     this.engineRpcConfiguration = engineRpcConfiguration;
     this.webSocketConfiguration = webSocketConfiguration;
     this.jsonRpcIpcConfiguration = jsonRpcIpcConfiguration;
+    this.inProcessRpcConfiguration = inProcessRpcConfiguration;
     this.metricsConfiguration = metricsConfiguration;
     this.permissioningConfiguration = permissioningConfiguration;
     this.apiConfiguration = apiConfiguration;
@@ -202,7 +204,6 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
     this.network = network;
     this.p2pEnabled = p2pEnabled;
     this.p2pPort = p2pPort;
-    this.tlsConfiguration = tlsConfiguration;
     this.networkingConfiguration = networkingConfiguration;
     this.discoveryEnabled = discoveryEnabled;
     this.bootnodeEligible = bootnodeEligible;
@@ -221,8 +222,9 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
             LOG.error("Could not find plugin \"{}\" in resources", pluginName);
           }
         });
+    this.requestedPlugins = requestedPlugins;
     engineRpcConfiguration.ifPresent(
-        config -> MergeConfigOptions.setMergeEnabled(config.isEnabled()));
+        config -> MergeConfiguration.setMergeEnabled(config.isEnabled()));
     this.extraCLIOptions = extraCLIOptions;
     this.staticNodes = staticNodes;
     this.isDnsEnabled = isDnsEnabled;
@@ -441,7 +443,6 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
               new BftRequestFactory(web3jService, bftType),
               new PermissioningJsonRpcRequestFactory(web3jService),
               new AdminRequestFactory(web3jService),
-              new PrivacyRequestFactory(web3jService),
               new CustomRequestFactory(web3jService),
               new MinerRequestFactory(web3jService),
               new TxPoolRequestFactory(web3jService),
@@ -624,6 +625,10 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
     return jsonRpcIpcConfiguration;
   }
 
+  InProcessRpcConfiguration inProcessRpcConfiguration() {
+    return inProcessRpcConfiguration;
+  }
+
   Optional<String> wsRpcListenHost() {
     return Optional.of(webSocketConfiguration().getHost());
   }
@@ -650,10 +655,6 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
     return p2pEnabled;
   }
 
-  public Optional<TLSConfiguration> getTLSConfiguration() {
-    return tlsConfiguration;
-  }
-
   public NetworkingConfiguration getNetworkingConfiguration() {
     return networkingConfiguration;
   }
@@ -669,12 +670,12 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
     this.bootnodes.addAll(bootnodes);
   }
 
-  public MiningParameters getMiningParameters() {
-    return miningParameters;
+  public MiningConfiguration getMiningParameters() {
+    return miningConfiguration;
   }
 
-  public void setMiningParameters(final MiningParameters miningParameters) {
-    this.miningParameters = miningParameters;
+  public void setMiningParameters(final MiningConfiguration miningConfiguration) {
+    this.miningConfiguration = miningConfiguration;
   }
 
   public TransactionPoolConfiguration getTransactionPoolConfiguration() {
@@ -730,6 +731,10 @@ public class BesuNode implements NodeConfiguration, RunnableNode, AutoCloseable 
 
   public List<String> getPlugins() {
     return plugins;
+  }
+
+  public List<String> getRequestedPlugins() {
+    return requestedPlugins;
   }
 
   @Override

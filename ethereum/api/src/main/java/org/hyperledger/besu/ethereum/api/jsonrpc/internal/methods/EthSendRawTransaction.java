@@ -14,11 +14,14 @@
  */
 package org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods;
 
+import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.api.jsonrpc.JsonRpcErrorConverter;
 import org.hyperledger.besu.ethereum.api.jsonrpc.RpcMethod;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequestContext;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.exception.InvalidJsonRpcParameters;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.exception.InvalidJsonRpcRequestException;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.JsonRpcParameter.JsonRpcParameterException;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcError;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcErrorResponse;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcResponse;
@@ -31,6 +34,7 @@ import org.hyperledger.besu.ethereum.mainnet.ValidationResult;
 import org.hyperledger.besu.ethereum.rlp.RLPException;
 import org.hyperledger.besu.ethereum.transaction.TransactionInvalidReason;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 
@@ -64,18 +68,33 @@ public class EthSendRawTransaction implements JsonRpcMethod {
   public JsonRpcResponse response(final JsonRpcRequestContext requestContext) {
     if (requestContext.getRequest().getParamLength() != 1) {
       return new JsonRpcErrorResponse(
-          requestContext.getRequest().getId(), RpcErrorType.INVALID_PARAMS);
+          requestContext.getRequest().getId(), RpcErrorType.INVALID_PARAM_COUNT);
     }
-    final String rawTransaction = requestContext.getRequiredParameter(0, String.class);
+    final String rawTransaction;
+    try {
+      rawTransaction = requestContext.getRequiredParameter(0, String.class);
+    } catch (JsonRpcParameterException e) {
+      throw new InvalidJsonRpcParameters(
+          "Invalid transaction parameters (index 0)", RpcErrorType.INVALID_TRANSACTION_PARAMS, e);
+    }
 
     final Transaction transaction;
     try {
       transaction = DomainObjectDecodeUtils.decodeRawTransaction(rawTransaction);
+      CompletableFuture.runAsync(
+          () -> {
+            Address sender = transaction.getSender();
+            LOG.atTrace()
+                .setMessage("The sender for transaction {} is calculated : {}")
+                .addArgument(transaction::getHash)
+                .addArgument(sender)
+                .log();
+          });
       LOG.trace("Received local transaction {}", transaction);
     } catch (final RLPException e) {
       LOG.debug("RLPException: {} caused by {}", e.getMessage(), e.getCause());
       return new JsonRpcErrorResponse(
-          requestContext.getRequest().getId(), RpcErrorType.INVALID_PARAMS);
+          requestContext.getRequest().getId(), RpcErrorType.INVALID_BLOCK_PARAMS);
     } catch (final InvalidJsonRpcRequestException i) {
       LOG.debug("InvalidJsonRpcRequestException: {} caused by {}", i.getMessage(), i.getCause());
       return new JsonRpcErrorResponse(

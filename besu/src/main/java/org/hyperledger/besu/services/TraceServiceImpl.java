@@ -20,7 +20,6 @@ import static org.hyperledger.besu.ethereum.mainnet.feemarket.ExcessBlobGasCalcu
 import org.hyperledger.besu.datatypes.BlobGas;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
-import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.TraceBlock.ChainUpdater;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.processor.Tracer;
 import org.hyperledger.besu.ethereum.api.query.BlockchainQueries;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
@@ -31,6 +30,7 @@ import org.hyperledger.besu.ethereum.mainnet.MainnetTransactionProcessor;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.ethereum.processing.TransactionProcessingResult;
+import org.hyperledger.besu.ethereum.vm.CachingBlockHashLookup;
 import org.hyperledger.besu.evm.worldstate.WorldUpdater;
 import org.hyperledger.besu.plugin.Unstable;
 import org.hyperledger.besu.plugin.data.BlockTraceResult;
@@ -155,14 +155,14 @@ public class TraceServiceImpl implements TraceService {
         blocks.get(0).getHash(),
         traceableState -> {
           final WorldUpdater worldStateUpdater = traceableState.updater();
-          final ChainUpdater chainUpdater = new ChainUpdater(traceableState, worldStateUpdater);
           beforeTracing.accept(worldStateUpdater);
           final List<TransactionProcessingResult> results = new ArrayList<>();
           blocks.forEach(
               block -> {
-                results.addAll(trace(blockchain, block, chainUpdater, tracer));
+                results.addAll(trace(blockchain, block, worldStateUpdater, tracer));
+                worldStateUpdater.commit();
               });
-          afterTracing.accept(chainUpdater.getNextUpdater());
+          afterTracing.accept(worldStateUpdater);
           return Optional.of(results);
         });
   }
@@ -177,7 +177,7 @@ public class TraceServiceImpl implements TraceService {
             blockchainQueries,
             block.getHash(),
             traceableState ->
-                Optional.of(trace(blockchain, block, new ChainUpdater(traceableState), tracer)));
+                Optional.of(trace(blockchain, block, traceableState.updater(), tracer)));
 
     return results;
   }
@@ -185,7 +185,7 @@ public class TraceServiceImpl implements TraceService {
   private List<TransactionProcessingResult> trace(
       final Blockchain blockchain,
       final Block block,
-      final ChainUpdater chainUpdater,
+      final WorldUpdater worldUpdater,
       final BlockAwareOperationTracer tracer) {
     final List<TransactionProcessingResult> results = new ArrayList<>();
     final ProtocolSpec protocolSpec = protocolSchedule.getByBlockHeader(block.getHeader());
@@ -208,7 +208,6 @@ public class TraceServiceImpl implements TraceService {
                               .map(parent -> calculateExcessBlobGasForParent(protocolSpec, parent))
                               .orElse(BlobGas.ZERO));
 
-              final WorldUpdater worldUpdater = chainUpdater.getNextUpdater();
               final TransactionProcessingResult result =
                   transactionProcessor.processTransaction(
                       worldUpdater,
@@ -216,7 +215,7 @@ public class TraceServiceImpl implements TraceService {
                       transaction,
                       protocolSpec.getMiningBeneficiaryCalculator().calculateBeneficiary(header),
                       tracer,
-                      protocolSpec.getBlockHashProcessor().getBlockHashLookup(header, blockchain),
+                      new CachingBlockHashLookup(header, blockchain),
                       false,
                       blobGasPrice);
 

@@ -14,20 +14,20 @@
  */
 package org.hyperledger.besu.ethereum.api.jsonrpc.internal.results;
 
+import org.hyperledger.besu.consensus.merge.PayloadWrapper;
 import org.hyperledger.besu.datatypes.Hash;
-import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.results.EngineGetPayloadBodiesResultV1.PayloadBody;
 import org.hyperledger.besu.ethereum.api.query.BlockWithMetadata;
 import org.hyperledger.besu.ethereum.api.query.TransactionWithMetadata;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockBody;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
-import org.hyperledger.besu.ethereum.core.BlockValueCalculator;
-import org.hyperledger.besu.ethereum.core.BlockWithReceipts;
+import org.hyperledger.besu.ethereum.core.Request;
 import org.hyperledger.besu.ethereum.core.encoding.EncodingContext;
 import org.hyperledger.besu.ethereum.core.encoding.TransactionEncoder;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -105,8 +105,8 @@ public class BlockResultFactory {
     return new EngineGetPayloadResultV1(block.getHeader(), txs);
   }
 
-  public EngineGetPayloadResultV2 payloadTransactionCompleteV2(
-      final BlockWithReceipts blockWithReceipts) {
+  public EngineGetPayloadResultV2 payloadTransactionCompleteV2(final PayloadWrapper payload) {
+    final var blockWithReceipts = payload.blockWithReceipts();
     final List<String> txs =
         blockWithReceipts.getBlock().getBody().getTransactions().stream()
             .map(
@@ -115,12 +115,11 @@ public class BlockResultFactory {
             .map(Bytes::toHexString)
             .collect(Collectors.toList());
 
-    final Wei blockValue = new BlockValueCalculator().calculateBlockValue(blockWithReceipts);
     return new EngineGetPayloadResultV2(
         blockWithReceipts.getHeader(),
         txs,
         blockWithReceipts.getBlock().getBody().getWithdrawals(),
-        Quantity.create(blockValue));
+        Quantity.create(payload.blockValue()));
   }
 
   public EngineGetPayloadBodiesResultV1 payloadBodiesCompleteV1(
@@ -132,8 +131,8 @@ public class BlockResultFactory {
     return new EngineGetPayloadBodiesResultV1(payloadBodies);
   }
 
-  public EngineGetPayloadResultV3 payloadTransactionCompleteV3(
-      final BlockWithReceipts blockWithReceipts) {
+  public EngineGetPayloadResultV3 payloadTransactionCompleteV3(final PayloadWrapper payload) {
+    final var blockWithReceipts = payload.blockWithReceipts();
     final List<String> txs =
         blockWithReceipts.getBlock().getBody().getTransactions().stream()
             .map(
@@ -141,8 +140,6 @@ public class BlockResultFactory {
                     TransactionEncoder.encodeOpaqueBytes(transaction, EncodingContext.BLOCK_BODY))
             .map(Bytes::toHexString)
             .collect(Collectors.toList());
-
-    final Wei blockValue = new BlockValueCalculator().calculateBlockValue(blockWithReceipts);
 
     final BlobsBundleV1 blobsBundleV1 =
         new BlobsBundleV1(blockWithReceipts.getBlock().getBody().getTransactions());
@@ -150,12 +147,12 @@ public class BlockResultFactory {
         blockWithReceipts.getHeader(),
         txs,
         blockWithReceipts.getBlock().getBody().getWithdrawals(),
-        Quantity.create(blockValue),
+        Quantity.create(payload.blockValue()),
         blobsBundleV1);
   }
 
-  public EngineGetPayloadResultV4 payloadTransactionCompleteV4(
-      final BlockWithReceipts blockWithReceipts) {
+  public EngineGetPayloadResultV4 payloadTransactionCompleteV4(final PayloadWrapper payload) {
+    final var blockWithReceipts = payload.blockWithReceipts();
     final List<String> txs =
         blockWithReceipts.getBlock().getBody().getTransactions().stream()
             .map(
@@ -163,8 +160,15 @@ public class BlockResultFactory {
                     TransactionEncoder.encodeOpaqueBytes(transaction, EncodingContext.BLOCK_BODY))
             .map(Bytes::toHexString)
             .collect(Collectors.toList());
-
-    final Wei blockValue = new BlockValueCalculator().calculateBlockValue(blockWithReceipts);
+    final Optional<List<String>> requestsWithoutRequestId =
+        payload
+            .requests()
+            .map(
+                rqs ->
+                    rqs.stream()
+                        .sorted(Comparator.comparing(Request::getType))
+                        .map(r -> r.getData().toHexString())
+                        .toList());
 
     final BlobsBundleV1 blobsBundleV1 =
         new BlobsBundleV1(blockWithReceipts.getBlock().getBody().getTransactions());
@@ -172,9 +176,8 @@ public class BlockResultFactory {
         blockWithReceipts.getHeader(),
         txs,
         blockWithReceipts.getBlock().getBody().getWithdrawals(),
-        blockWithReceipts.getBlock().getBody().getDeposits(),
-        blockWithReceipts.getBlock().getBody().getWithdrawalRequests(),
-        Quantity.create(blockValue),
+        requestsWithoutRequestId,
+        Quantity.create(payload.blockValue()),
         blobsBundleV1);
   }
 

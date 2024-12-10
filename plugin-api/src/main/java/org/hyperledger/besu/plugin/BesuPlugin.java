@@ -48,7 +48,7 @@ public interface BesuPlugin {
    *
    * @param context the context that provides access to Besu services.
    */
-  void register(BesuContext context);
+  void register(ServiceManager context);
 
   /**
    * Called once when besu has loaded configuration but before external services have been started
@@ -62,6 +62,9 @@ public interface BesuPlugin {
    * Besu services and starting any background threads the plugin requires.
    */
   void start();
+
+  /** Hook to execute plugin setup code after external services */
+  default void afterExternalServicePostMainLoop() {}
 
   /**
    * Called when the plugin is being reloaded. This method will be called through a dedicated JSON
@@ -102,6 +105,6 @@ public interface BesuPlugin {
         Optional.ofNullable(pluginPackage.getImplementationVersion())
             .filter(version -> !version.isBlank())
             .orElse("<Unknown Version>");
-    return implTitle + "/v" + implVersion;
+    return implTitle + "/" + implVersion;
   }
 }

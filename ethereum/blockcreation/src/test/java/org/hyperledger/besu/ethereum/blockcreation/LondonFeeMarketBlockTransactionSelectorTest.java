@@ -16,7 +16,7 @@ package org.hyperledger.besu.ethereum.blockcreation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
-import static org.hyperledger.besu.ethereum.core.MiningParameters.DEFAULT_NON_POA_BLOCK_TXS_SELECTION_MAX_TIME;
+import static org.hyperledger.besu.ethereum.core.MiningConfiguration.DEFAULT_NON_POA_BLOCK_TXS_SELECTION_MAX_TIME;
 import static org.mockito.Mockito.mock;
 
 import org.hyperledger.besu.config.GenesisConfigFile;
@@ -26,11 +26,12 @@ import org.hyperledger.besu.ethereum.blockcreation.txselection.BlockTransactionS
 import org.hyperledger.besu.ethereum.blockcreation.txselection.TransactionSelectionResults;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.AddressHelpers;
-import org.hyperledger.besu.ethereum.core.ImmutableMiningParameters;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.ImmutableMiningConfiguration;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.ProcessableBlockHeader;
 import org.hyperledger.besu.ethereum.core.Transaction;
+import org.hyperledger.besu.ethereum.eth.transactions.BlobCache;
 import org.hyperledger.besu.ethereum.eth.transactions.ImmutableTransactionPoolConfiguration;
 import org.hyperledger.besu.ethereum.eth.transactions.PendingTransactions;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionBroadcaster;
@@ -43,12 +44,14 @@ import org.hyperledger.besu.ethereum.mainnet.ProtocolScheduleBuilder;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpecAdapters;
 import org.hyperledger.besu.ethereum.mainnet.ValidationResult;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 import org.hyperledger.besu.plugin.data.TransactionSelectionResult;
 import org.hyperledger.besu.testutil.TestClock;
 import org.hyperledger.besu.util.number.Fraction;
 
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
@@ -65,13 +68,15 @@ public class LondonFeeMarketBlockTransactionSelectorTest
   protected ProtocolSchedule createProtocolSchedule() {
     return new ProtocolScheduleBuilder(
             genesisConfigFile.getConfigOptions(),
-            CHAIN_ID,
+            Optional.of(CHAIN_ID),
             ProtocolSpecAdapters.create(0, Function.identity()),
             new PrivacyParameters(),
             false,
             EvmConfiguration.DEFAULT,
-            MiningParameters.MINING_DISABLED,
-            new BadBlockManager())
+            MiningConfiguration.MINING_DISABLED,
+            new BadBlockManager(),
+            false,
+            new NoOpMetricsSystem())
         .createProtocolSchedule();
   }
 
@@ -98,7 +103,8 @@ public class LondonFeeMarketBlockTransactionSelectorTest
             mock(TransactionBroadcaster.class),
             ethContext,
             new TransactionPoolMetrics(metricsSystem),
-            poolConf);
+            poolConf,
+            new BlobCache());
     transactionPool.setEnabled();
     return transactionPool;
   }
@@ -216,7 +222,7 @@ public class LondonFeeMarketBlockTransactionSelectorTest
     final Address miningBeneficiary = AddressHelpers.ofValue(1);
     final BlockTransactionSelector selector =
         createBlockSelectorAndSetupTxPool(
-            defaultTestMiningParameters,
+            defaultTestMiningConfiguration,
             transactionProcessor,
             blockHeader,
             miningBeneficiary,
@@ -236,9 +242,9 @@ public class LondonFeeMarketBlockTransactionSelectorTest
   @Override
   public void shouldNotSelectTransactionsWithPriorityFeeLessThanConfig() {
     ProcessableBlockHeader blockHeader = createBlock(5_000_000, Wei.ONE);
-    final MiningParameters miningParameters =
-        ImmutableMiningParameters.builder().from(defaultTestMiningParameters).build();
-    miningParameters.setMinPriorityFeePerGas(Wei.of(7));
+    final MiningConfiguration miningConfiguration =
+        ImmutableMiningConfiguration.builder().from(defaultTestMiningConfiguration).build();
+    miningConfiguration.setMinPriorityFeePerGas(Wei.of(7));
 
     final Transaction txSelected1 = createEIP1559Transaction(1, Wei.of(8), Wei.of(8), 100_000);
     ensureTransactionIsValid(txSelected1);
@@ -257,7 +263,7 @@ public class LondonFeeMarketBlockTransactionSelectorTest
 
     final BlockTransactionSelector selector =
         createBlockSelectorAndSetupTxPool(
-            miningParameters,
+            miningConfiguration,
             transactionProcessor,
             blockHeader,
             AddressHelpers.ofValue(1),

@@ -17,7 +17,8 @@ package org.hyperledger.besu.ethereum.eth.transactions.layered;
 import static java.util.Comparator.comparing;
 
 import org.hyperledger.besu.ethereum.core.BlockHeader;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
+import org.hyperledger.besu.ethereum.eth.manager.EthScheduler;
 import org.hyperledger.besu.ethereum.eth.transactions.BlobCache;
 import org.hyperledger.besu.ethereum.eth.transactions.PendingTransaction;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolConfiguration;
@@ -36,19 +37,27 @@ public class GasPricePrioritizedTransactions extends AbstractPrioritizedTransact
 
   public GasPricePrioritizedTransactions(
       final TransactionPoolConfiguration poolConfig,
+      final EthScheduler ethScheduler,
       final TransactionsLayer nextLayer,
       final TransactionPoolMetrics metrics,
       final BiFunction<PendingTransaction, PendingTransaction, Boolean>
           transactionReplacementTester,
       final BlobCache blobCache,
-      final MiningParameters miningParameters) {
+      final MiningConfiguration miningConfiguration) {
     super(
-        poolConfig, nextLayer, metrics, transactionReplacementTester, blobCache, miningParameters);
+        poolConfig,
+        ethScheduler,
+        nextLayer,
+        metrics,
+        transactionReplacementTester,
+        blobCache,
+        miningConfiguration);
   }
 
   @Override
   protected int compareByFee(final PendingTransaction pt1, final PendingTransaction pt2) {
-    return comparing(PendingTransaction::hasPriority)
+    return comparing(PendingTransaction::getScore)
+        .thenComparing(PendingTransaction::hasPriority)
         .thenComparing(PendingTransaction::getGasPrice)
         .thenComparing(PendingTransaction::getSequence)
         .compare(pt1, pt2);
@@ -65,26 +74,38 @@ public class GasPricePrioritizedTransactions extends AbstractPrioritizedTransact
         || pendingTransaction
             .getTransaction()
             .getGasPrice()
-            .map(miningParameters.getMinTransactionGasPrice()::lessThan)
+            .map(miningConfiguration.getMinTransactionGasPrice()::lessThan)
             .orElse(false);
   }
 
   @Override
-  public String internalLogStats() {
+  protected String internalLogStats() {
     if (orderByFee.isEmpty()) {
       return "GasPrice Prioritized: Empty";
     }
 
+    final PendingTransaction highest = orderByFee.last();
+    final PendingTransaction lowest = orderByFee.first();
+
     return "GasPrice Prioritized: "
         + "count: "
         + pendingTransactions.size()
-        + " space used: "
+        + ", space used: "
         + spaceUsed
-        + " unique senders: "
+        + ", unique senders: "
         + txsBySender.size()
-        + ", highest fee tx: "
-        + orderByFee.last().getTransaction().getGasPrice().get().toHumanReadableString()
-        + ", lowest fee tx: "
-        + orderByFee.first().getTransaction().getGasPrice().get().toHumanReadableString();
+        + ", highest priority tx: [score: "
+        + highest.getScore()
+        + ", gas price: "
+        + highest.getTransaction().getGasPrice().get().toHumanReadableString()
+        + ", hash: "
+        + highest.getHash()
+        + "], lowest priority tx: [score: "
+        + lowest.getScore()
+        + ", gas price: "
+        + lowest.getTransaction().getGasPrice().get().toHumanReadableString()
+        + ", hash: "
+        + lowest.getHash()
+        + "]";
   }
 }

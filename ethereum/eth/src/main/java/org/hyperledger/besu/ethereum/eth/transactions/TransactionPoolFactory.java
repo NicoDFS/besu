@@ -17,8 +17,9 @@ package org.hyperledger.besu.ethereum.eth.transactions;
 import static org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolConfiguration.Implementation.LAYERED;
 
 import org.hyperledger.besu.ethereum.ProtocolContext;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.eth.manager.EthContext;
+import org.hyperledger.besu.ethereum.eth.manager.EthScheduler;
 import org.hyperledger.besu.ethereum.eth.messages.EthPV62;
 import org.hyperledger.besu.ethereum.eth.messages.EthPV65;
 import org.hyperledger.besu.ethereum.eth.sync.state.SyncState;
@@ -55,7 +56,7 @@ public class TransactionPoolFactory {
       final SyncState syncState,
       final TransactionPoolConfiguration transactionPoolConfiguration,
       final BlobCache blobCache,
-      final MiningParameters miningParameters) {
+      final MiningConfiguration miningConfiguration) {
 
     final TransactionPoolMetrics metrics = new TransactionPoolMetrics(metricsSystem);
 
@@ -79,7 +80,7 @@ public class TransactionPoolFactory {
         transactionsMessageSender,
         newPooledTransactionHashesMessageSender,
         blobCache,
-        miningParameters);
+        miningConfiguration);
   }
 
   static TransactionPool createTransactionPool(
@@ -94,7 +95,7 @@ public class TransactionPoolFactory {
       final TransactionsMessageSender transactionsMessageSender,
       final NewPooledTransactionHashesMessageSender newPooledTransactionHashesMessageSender,
       final BlobCache blobCache,
-      final MiningParameters miningParameters) {
+      final MiningConfiguration miningConfiguration) {
 
     final TransactionPool transactionPool =
         new TransactionPool(
@@ -102,11 +103,12 @@ public class TransactionPoolFactory {
                 createPendingTransactions(
                     protocolSchedule,
                     protocolContext,
+                    ethContext.getScheduler(),
                     clock,
                     metrics,
                     transactionPoolConfiguration,
                     blobCache,
-                    miningParameters),
+                    miningConfiguration),
             protocolSchedule,
             protocolContext,
             new TransactionBroadcaster(
@@ -116,7 +118,8 @@ public class TransactionPoolFactory {
                 newPooledTransactionHashesMessageSender),
             ethContext,
             metrics,
-            transactionPoolConfiguration);
+            transactionPoolConfiguration,
+            blobCache);
 
     final TransactionsMessageHandler transactionsMessageHandler =
         new TransactionsMessageHandler(
@@ -233,11 +236,12 @@ public class TransactionPoolFactory {
   private static PendingTransactions createPendingTransactions(
       final ProtocolSchedule protocolSchedule,
       final ProtocolContext protocolContext,
+      final EthScheduler ethScheduler,
       final Clock clock,
       final TransactionPoolMetrics metrics,
       final TransactionPoolConfiguration transactionPoolConfiguration,
       final BlobCache blobCache,
-      final MiningParameters miningParameters) {
+      final MiningConfiguration miningConfiguration) {
 
     boolean isFeeMarketImplementBaseFee =
         protocolSchedule.anyMatch(
@@ -247,11 +251,12 @@ public class TransactionPoolFactory {
       return createLayeredPendingTransactions(
           protocolSchedule,
           protocolContext,
+          ethScheduler,
           metrics,
           transactionPoolConfiguration,
           isFeeMarketImplementBaseFee,
           blobCache,
-          miningParameters);
+          miningConfiguration);
     } else {
       return createPendingTransactionSorter(
           protocolContext,
@@ -286,11 +291,12 @@ public class TransactionPoolFactory {
   private static PendingTransactions createLayeredPendingTransactions(
       final ProtocolSchedule protocolSchedule,
       final ProtocolContext protocolContext,
+      final EthScheduler ethScheduler,
       final TransactionPoolMetrics metrics,
       final TransactionPoolConfiguration transactionPoolConfiguration,
       final boolean isFeeMarketImplementBaseFee,
       final BlobCache blobCache,
-      final MiningParameters miningParameters) {
+      final MiningConfiguration miningConfiguration) {
 
     final TransactionPoolReplacementHandler transactionReplacementHandler =
         new TransactionPoolReplacementHandler(
@@ -307,6 +313,7 @@ public class TransactionPoolFactory {
     final SparseTransactions sparseTransactions =
         new SparseTransactions(
             transactionPoolConfiguration,
+            ethScheduler,
             endLayer,
             metrics,
             transactionReplacementTester,
@@ -315,6 +322,7 @@ public class TransactionPoolFactory {
     final ReadyTransactions readyTransactions =
         new ReadyTransactions(
             transactionPoolConfiguration,
+            ethScheduler,
             sparseTransactions,
             metrics,
             transactionReplacementTester,
@@ -331,23 +339,26 @@ public class TransactionPoolFactory {
           new BaseFeePrioritizedTransactions(
               transactionPoolConfiguration,
               protocolContext.getBlockchain()::getChainHeadHeader,
+              ethScheduler,
               readyTransactions,
               metrics,
               transactionReplacementTester,
               feeMarket,
               blobCache,
-              miningParameters);
+              miningConfiguration);
     } else {
       pendingTransactionsSorter =
           new GasPricePrioritizedTransactions(
               transactionPoolConfiguration,
+              ethScheduler,
               readyTransactions,
               metrics,
               transactionReplacementTester,
               blobCache,
-              miningParameters);
+              miningConfiguration);
     }
 
-    return new LayeredPendingTransactions(transactionPoolConfiguration, pendingTransactionsSorter);
+    return new LayeredPendingTransactions(
+        transactionPoolConfiguration, pendingTransactionsSorter, ethScheduler);
   }
 }

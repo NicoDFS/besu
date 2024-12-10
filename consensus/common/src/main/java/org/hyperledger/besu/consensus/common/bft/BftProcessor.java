@@ -44,8 +44,13 @@ public class BftProcessor implements Runnable {
     this.eventMultiplexer = eventMultiplexer;
   }
 
+  /** Indicate to the processor that it can be started */
+  public synchronized void start() {
+    shutdown = false;
+  }
+
   /** Indicate to the processor that it should gracefully stop at its next opportunity */
-  public void stop() {
+  public synchronized void stop() {
     shutdown = true;
   }
 
@@ -61,9 +66,14 @@ public class BftProcessor implements Runnable {
   @Override
   public void run() {
     try {
+      // Start the event queue. Until it is started it won't accept new events from peers
+      incomingQueue.start();
+
       while (!shutdown) {
         nextEvent().ifPresent(eventMultiplexer::handleBftEvent);
       }
+
+      incomingQueue.stop();
     } catch (final Throwable t) {
       LOG.error("BFT Mining thread has suffered a fatal error, mining has been halted", t);
     }

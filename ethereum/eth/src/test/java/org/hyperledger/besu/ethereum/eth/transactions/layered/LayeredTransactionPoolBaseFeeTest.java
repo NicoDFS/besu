@@ -19,7 +19,7 @@ import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.Difficulty;
 import org.hyperledger.besu.ethereum.core.ExecutionContextTestFixture;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.TransactionTestFixture;
 import org.hyperledger.besu.ethereum.eth.transactions.BlobCache;
@@ -43,12 +43,13 @@ public class LayeredTransactionPoolBaseFeeTest extends AbstractLayeredTransactio
     return new BaseFeePrioritizedTransactions(
         poolConfig,
         protocolContext.getBlockchain()::getChainHeadHeader,
+        ethScheduler,
         nextLayer,
         txPoolMetrics,
         transactionReplacementTester,
         FeeMarket.london(0L),
         new BlobCache(),
-        MiningParameters.newDefault());
+        MiningConfiguration.newDefault());
   }
 
   @Override

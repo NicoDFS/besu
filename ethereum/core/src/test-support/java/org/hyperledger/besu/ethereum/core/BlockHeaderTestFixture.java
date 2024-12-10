@@ -25,6 +25,7 @@ import java.util.Optional;
 
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
+import org.apache.tuweni.units.bigints.UInt64;
 
 public class BlockHeaderTestFixture {
 
@@ -50,12 +51,12 @@ public class BlockHeaderTestFixture {
   private Hash mixHash = Hash.EMPTY;
   private long nonce = 0;
   private Optional<Hash> withdrawalsRoot = Optional.empty();
-  private Optional<Hash> depositsRoot = Optional.empty();
-  private Optional<Hash> withdrawalsRequestRoot = Optional.empty();
+  private Optional<Hash> requestsHash = Optional.empty();
   private BlockHeaderFunctions blockHeaderFunctions = new MainnetBlockHeaderFunctions();
   private Optional<BlobGas> excessBlobGas = Optional.empty();
   private Optional<Long> blobGasUsed = Optional.empty();
   private Optional<Bytes32> parentBeaconBlockRoot = Optional.empty();
+  private Optional<UInt64> targetBlobsPerBlock = Optional.empty();
 
   public BlockHeader buildHeader() {
     final BlockHeaderBuilder builder = BlockHeaderBuilder.create();
@@ -79,9 +80,9 @@ public class BlockHeaderTestFixture {
     withdrawalsRoot.ifPresent(builder::withdrawalsRoot);
     excessBlobGas.ifPresent(builder::excessBlobGas);
     blobGasUsed.ifPresent(builder::blobGasUsed);
-    depositsRoot.ifPresent(builder::depositsRoot);
-    withdrawalsRequestRoot.ifPresent(builder::withdrawalRequestsRoot);
+    requestsHash.ifPresent(builder::requestsHash);
     parentBeaconBlockRoot.ifPresent(builder::parentBeaconBlockRoot);
+    targetBlobsPerBlock.ifPresent(builder::targetBlobsPerBlock);
     builder.blockHeaderFunctions(blockHeaderFunctions);
 
     return builder.buildBlockHeader();
@@ -177,13 +178,8 @@ public class BlockHeaderTestFixture {
     return this;
   }
 
-  public BlockHeaderTestFixture depositsRoot(final Hash depositsRoot) {
-    this.depositsRoot = Optional.ofNullable(depositsRoot);
-    return this;
-  }
-
-  public BlockHeaderTestFixture withdrawalRequestsRoot(final Hash withdrawalRequestsRoot) {
-    this.withdrawalsRequestRoot = Optional.ofNullable(withdrawalRequestsRoot);
+  public BlockHeaderTestFixture requestsHash(final Hash requestsHash) {
+    this.requestsHash = Optional.ofNullable(requestsHash);
     return this;
   }
 
@@ -206,6 +202,11 @@ public class BlockHeaderTestFixture {
   public BlockHeaderTestFixture parentBeaconBlockRoot(
       final Optional<Bytes32> parentBeaconBlockRoot) {
     this.parentBeaconBlockRoot = parentBeaconBlockRoot;
+    return this;
+  }
+
+  public BlockHeaderTestFixture targetBlobsPerBlock(final UInt64 targetBlobsPerBlock) {
+    this.targetBlobsPerBlock = Optional.of(targetBlobsPerBlock);
     return this;
   }
 }

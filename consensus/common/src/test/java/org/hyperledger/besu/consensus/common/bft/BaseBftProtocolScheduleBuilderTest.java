@@ -31,7 +31,7 @@ import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
 import org.hyperledger.besu.ethereum.core.MilestoneStreamingProtocolSchedule;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.mainnet.BlockHeaderValidator;
 import org.hyperledger.besu.ethereum.mainnet.DefaultProtocolSchedule;
@@ -39,6 +39,7 @@ import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.ethereum.mainnet.feemarket.FeeMarket;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 
 import java.math.BigInteger;
 import java.util.List;
@@ -244,8 +245,10 @@ public class BaseBftProtocolScheduleBuilderTest {
         false,
         bftExtraDataCodec,
         EvmConfiguration.DEFAULT,
-        MiningParameters.MINING_DISABLED,
-        new BadBlockManager());
+        MiningConfiguration.MINING_DISABLED,
+        new BadBlockManager(),
+        false,
+        new NoOpMetricsSystem());
   }
 
   private BftConfigOptions createBftConfig(final BigInteger blockReward) {

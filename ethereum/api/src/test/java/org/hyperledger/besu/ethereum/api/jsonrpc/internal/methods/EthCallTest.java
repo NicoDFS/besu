@@ -27,9 +27,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import org.hyperledger.besu.datatypes.AccountOverride;
+import org.hyperledger.besu.datatypes.AccountOverrideMap;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.datatypes.parameters.UnsignedLongParameter;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequest;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequestContext;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.JsonCallParameter;
@@ -93,13 +96,41 @@ public class EthCallTest {
   }
 
   @Test
+  public void noAccountOverrides() {
+    final JsonRpcRequestContext request = ethCallRequest(callParameter(), "latest");
+    Optional<AccountOverrideMap> overrideMap = method.getAddressAccountOverrideMap(request);
+    assertThat(overrideMap.isPresent()).isFalse();
+  }
+
+  @Test
+  public void someAccountOverrides() {
+    AccountOverrideMap expectedOverrides = new AccountOverrideMap();
+    AccountOverride override =
+        new AccountOverride.Builder().withNonce(new UnsignedLongParameter("0x9e")).build();
+    final Address address = Address.fromHexString("0xd9c9cd5f6779558b6e0ed4e6acf6b1947e7fa1f3");
+    expectedOverrides.put(address, override);
+
+    final JsonRpcRequestContext request =
+        ethCallRequestWithStateOverrides(callParameter(), "latest", expectedOverrides);
+
+    Optional<AccountOverrideMap> maybeOverrideMap = method.getAddressAccountOverrideMap(request);
+    assertThat(maybeOverrideMap.isPresent()).isTrue();
+    AccountOverrideMap overrideMap = maybeOverrideMap.get();
+    assertThat(overrideMap.keySet()).hasSize(1);
+    assertThat(overrideMap.values()).hasSize(1);
+
+    assertThat(overrideMap).containsKey(address);
+    assertThat(overrideMap).containsValue(override);
+  }
+
+  @Test
   public void shouldReturnInternalErrorWhenProcessorReturnsEmpty() {
     final JsonRpcRequestContext request = ethCallRequest(callParameter(), "latest");
     final JsonRpcResponse expectedResponse = new JsonRpcErrorResponse(null, INTERNAL_ERROR);
 
     when(blockchainQueries.getBlockchain()).thenReturn(blockchain);
     when(blockchain.getChainHead()).thenReturn(chainHead);
-    when(transactionSimulator.process(any(), any(), any(), any(), any()))
+    when(transactionSimulator.process(any(), any(), any(), any(), any(), any()))
         .thenReturn(Optional.empty());
 
     final BlockHeader blockHeader = mock(BlockHeader.class);
@@ -109,14 +140,13 @@ public class EthCallTest {
     final JsonRpcResponse response = method.response(request);
 
     assertThat(response).usingRecursiveComparison().isEqualTo(expectedResponse);
-    verify(transactionSimulator).process(any(), any(), any(), any(), any());
+    verify(transactionSimulator).process(any(), any(), any(), any(), any(), any());
   }
 
   @Test
   public void shouldAcceptRequestWhenMissingOptionalFields() {
     final JsonCallParameter callParameter =
-        new JsonCallParameter(
-            null, null, null, null, null, null, null, null, null, Boolean.FALSE, null, null, null);
+        new JsonCallParameter.JsonCallParameterBuilder().withStrict(Boolean.FALSE).build();
     final JsonRpcRequestContext request = ethCallRequest(callParameter, "latest");
     final JsonRpcResponse expectedResponse =
         new JsonRpcSuccessResponse(null, Bytes.of().toString());
@@ -131,12 +161,13 @@ public class EthCallTest {
     when(result.isSuccessful()).thenReturn(true);
     when(result.getValidationResult()).thenReturn(ValidationResult.valid());
     when(result.getOutput()).thenReturn(Bytes.of());
-    verify(transactionSimulator).process(any(), any(), any(), mapperCaptor.capture(), any());
+    verify(transactionSimulator)
+        .process(
+            eq(callParameter), eq(Optional.empty()), any(), any(), mapperCaptor.capture(), any());
     assertThat(mapperCaptor.getValue().apply(mock(MutableWorldState.class), Optional.of(result)))
         .isEqualTo(Optional.of(expectedResponse));
 
     assertThat(response).usingRecursiveComparison().isEqualTo(expectedResponse);
-    verify(transactionSimulator).process(eq(callParameter), any(), any(), any(), any());
   }
 
   @Test
@@ -158,12 +189,13 @@ public class EthCallTest {
     when(result.isSuccessful()).thenReturn(true);
     when(result.getValidationResult()).thenReturn(ValidationResult.valid());
     when(result.getOutput()).thenReturn(Bytes.of(1));
-    verify(transactionSimulator).process(any(), any(), any(), mapperCaptor.capture(), any());
+    verify(transactionSimulator)
+        .process(
+            eq(callParameter()), eq(Optional.empty()), any(), any(), mapperCaptor.capture(), any());
     assertThat(mapperCaptor.getValue().apply(mock(MutableWorldState.class), Optional.of(result)))
         .isEqualTo(Optional.of(expectedResponse));
 
     assertThat(response).usingRecursiveComparison().isEqualTo(expectedResponse);
-    verify(transactionSimulator).process(eq(callParameter()), any(), any(), any(), any());
     verify(blockchainQueries, atLeastOnce()).getBlockchain();
     verifyNoMoreInteractions(blockchainQueries);
   }
@@ -175,10 +207,9 @@ public class EthCallTest {
     // Expect a revert error with no decoded reason (error doesn't begin "Error(string)" so ignored)
     final String abiHexString = "0x1234";
     final JsonRpcError expectedError = new JsonRpcError(REVERT_ERROR, abiHexString);
-    final JsonRpcResponse expectedResponse = new JsonRpcErrorResponse(null, expectedError);
+    final JsonRpcErrorResponse expectedResponse = new JsonRpcErrorResponse(null, expectedError);
 
-    assertThat(((JsonRpcErrorResponse) expectedResponse).getError().getMessage())
-        .isEqualTo("Execution reverted");
+    assertThat(expectedResponse.getError().getMessage()).isEqualTo("Execution reverted");
 
     mockTransactionProcessorSuccessResult(expectedResponse);
     when(blockchainQueries.getBlockchain()).thenReturn(blockchain);
@@ -198,7 +229,8 @@ public class EthCallTest {
     when(result.isSuccessful()).thenReturn(false);
     when(result.getValidationResult()).thenReturn(ValidationResult.valid());
     when(result.result()).thenReturn(processingResult);
-    verify(transactionSimulator).process(any(), any(), any(), mapperCaptor.capture(), any());
+    verify(transactionSimulator)
+        .process(any(), eq(Optional.empty()), any(), any(), mapperCaptor.capture(), any());
     assertThat(mapperCaptor.getValue().apply(mock(MutableWorldState.class), Optional.of(result)))
         .isEqualTo(Optional.of(expectedResponse));
 
@@ -215,9 +247,9 @@ public class EthCallTest {
     // bytes are invalid ABI)
     final String abiHexString = "0x08c379a002d36d";
     final JsonRpcError expectedError = new JsonRpcError(REVERT_ERROR, abiHexString);
-    final JsonRpcResponse expectedResponse = new JsonRpcErrorResponse(null, expectedError);
+    final JsonRpcErrorResponse expectedResponse = new JsonRpcErrorResponse(null, expectedError);
 
-    assertThat(((JsonRpcErrorResponse) expectedResponse).getError().getMessage())
+    assertThat(expectedResponse.getError().getMessage())
         .isEqualTo("Execution reverted: ABI decode error");
 
     mockTransactionProcessorSuccessResult(expectedResponse);
@@ -237,7 +269,8 @@ public class EthCallTest {
     when(result.isSuccessful()).thenReturn(false);
     when(result.getValidationResult()).thenReturn(ValidationResult.valid());
     when(result.result()).thenReturn(processingResult);
-    verify(transactionSimulator).process(any(), any(), any(), mapperCaptor.capture(), any());
+    verify(transactionSimulator)
+        .process(any(), eq(Optional.empty()), any(), any(), mapperCaptor.capture(), any());
     assertThat(mapperCaptor.getValue().apply(mock(MutableWorldState.class), Optional.of(result)))
         .isEqualTo(Optional.of(expectedResponse));
 
@@ -255,9 +288,9 @@ public class EthCallTest {
     final String abiHexString =
         "0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002545524332303a207472616e736665722066726f6d20746865207a65726f2061646472657373000000000000000000000000000000000000000000000000000000";
     final JsonRpcError expectedError = new JsonRpcError(REVERT_ERROR, abiHexString);
-    final JsonRpcResponse expectedResponse = new JsonRpcErrorResponse(null, expectedError);
+    final JsonRpcErrorResponse expectedResponse = new JsonRpcErrorResponse(null, expectedError);
 
-    assertThat(((JsonRpcErrorResponse) expectedResponse).getError().getMessage())
+    assertThat(expectedResponse.getError().getMessage())
         .isEqualTo("Execution reverted: ERC20: transfer from the zero address");
 
     mockTransactionProcessorSuccessResult(expectedResponse);
@@ -279,9 +312,8 @@ public class EthCallTest {
     when(result.getValidationResult()).thenReturn(ValidationResult.valid());
     when(result.result()).thenReturn(processingResult);
 
-    verify(transactionSimulator).process(any(), any(), any(), mapperCaptor.capture(), any());
-    System.out.println(result);
-    System.out.println(expectedResponse);
+    verify(transactionSimulator)
+        .process(any(), eq(Optional.empty()), any(), any(), mapperCaptor.capture(), any());
     assertThat(mapperCaptor.getValue().apply(mock(MutableWorldState.class), Optional.of(result)))
         .isEqualTo(Optional.of(expectedResponse));
 
@@ -295,7 +327,7 @@ public class EthCallTest {
     final JsonRpcRequestContext request = ethCallRequest(callParameter(), "latest");
     when(blockchainQueries.getBlockchain()).thenReturn(blockchain);
     when(blockchain.getChainHead()).thenReturn(chainHead);
-    when(transactionSimulator.process(any(), any(), any(), any(), any()))
+    when(transactionSimulator.process(any(), eq(Optional.empty()), any(), any(), any(), any()))
         .thenReturn(Optional.empty());
 
     final BlockHeader blockHeader = mock(BlockHeader.class);
@@ -305,21 +337,22 @@ public class EthCallTest {
     method.response(request);
 
     verify(blockchainQueries, atLeastOnce()).getBlockchain();
-    verify(transactionSimulator).process(any(), any(), any(), any(), any());
+    verify(transactionSimulator).process(any(), eq(Optional.empty()), any(), any(), any(), any());
   }
 
   @Test
   public void shouldUseCorrectBlockNumberWhenEarliest() {
     final JsonRpcRequestContext request = ethCallRequest(callParameter(), "earliest");
     when(blockchainQueries.getBlockHashByNumber(anyLong())).thenReturn(Optional.of(Hash.ZERO));
-    when(transactionSimulator.process(any(), any(), any(), any(), any()))
+    when(transactionSimulator.process(
+            any(), any(), any(TransactionValidationParams.class), any(), any(BlockHeader.class)))
         .thenReturn(Optional.empty());
     when(blockchainQueries.getBlockHeaderByHash(Hash.ZERO))
         .thenReturn(Optional.of(mock(BlockHeader.class)));
     method.response(request);
 
     verify(blockchainQueries).getBlockHeaderByHash(eq(Hash.ZERO));
-    verify(transactionSimulator).process(any(), any(), any(), any(), any());
+    verify(transactionSimulator).process(any(), eq(Optional.empty()), any(), any(), any(), any());
   }
 
   @Test
@@ -327,13 +360,13 @@ public class EthCallTest {
     final JsonRpcRequestContext request = ethCallRequest(callParameter(), "safe");
     when(blockchainQueries.getBlockHeaderByHash(Hash.ZERO)).thenReturn(Optional.of(blockHeader));
     when(blockchainQueries.safeBlockHeader()).thenReturn(Optional.of(blockHeader));
-    when(transactionSimulator.process(any(), any(), any(), any(), any()))
+    when(transactionSimulator.process(any(), eq(Optional.empty()), any(), any(), any(), any()))
         .thenReturn(Optional.empty());
     method.response(request);
 
     verify(blockchainQueries).getBlockHeaderByHash(Hash.ZERO);
     verify(blockchainQueries).safeBlockHeader();
-    verify(transactionSimulator).process(any(), any(), any(), any(), any());
+    verify(transactionSimulator).process(any(), eq(Optional.empty()), any(), any(), any(), any());
   }
 
   @Test
@@ -341,13 +374,13 @@ public class EthCallTest {
     final JsonRpcRequestContext request = ethCallRequest(callParameter(), "finalized");
     when(blockchainQueries.getBlockHeaderByHash(Hash.ZERO)).thenReturn(Optional.of(blockHeader));
     when(blockchainQueries.finalizedBlockHeader()).thenReturn(Optional.of(blockHeader));
-    when(transactionSimulator.process(any(), any(), any(), any(), any()))
+    when(transactionSimulator.process(any(), eq(Optional.empty()), any(), any(), any(), any()))
         .thenReturn(Optional.empty());
     method.response(request);
 
     verify(blockchainQueries).getBlockHeaderByHash(Hash.ZERO);
     verify(blockchainQueries).finalizedBlockHeader();
-    verify(transactionSimulator).process(any(), any(), any(), any(), any());
+    verify(transactionSimulator).process(any(), eq(Optional.empty()), any(), any(), any(), any());
   }
 
   @Test
@@ -357,13 +390,13 @@ public class EthCallTest {
     when(blockchainQueries.getBlockHashByNumber(anyLong())).thenReturn(Optional.of(Hash.ZERO));
     when(blockchainQueries.getBlockHeaderByHash(Hash.ZERO))
         .thenReturn(Optional.of(mock(BlockHeader.class)));
-    when(transactionSimulator.process(any(), any(), any(), any(), any()))
+    when(transactionSimulator.process(any(), eq(Optional.empty()), any(), any(), any(), any()))
         .thenReturn(Optional.empty());
 
     method.response(request);
 
     verify(blockchainQueries).getBlockHeaderByHash(eq(Hash.ZERO));
-    verify(transactionSimulator).process(any(), any(), any(), any(), any());
+    verify(transactionSimulator).process(any(), eq(Optional.empty()), any(), any(), any(), any());
   }
 
   @Test
@@ -435,7 +468,7 @@ public class EthCallTest {
             .build();
 
     verify(transactionSimulator)
-        .process(any(), eq(transactionValidationParams), any(), any(), any());
+        .process(any(), eq(Optional.empty()), eq(transactionValidationParams), any(), any(), any());
   }
 
   private JsonCallParameter callParameter() {
@@ -444,20 +477,16 @@ public class EthCallTest {
 
   private JsonCallParameter callParameter(
       final Wei gasPrice, final Wei maxFeesPerGas, final Wei maxPriorityFeesPerGas) {
-    return new JsonCallParameter(
-        Address.fromHexString("0x0"),
-        Address.fromHexString("0x0"),
-        0L,
-        gasPrice,
-        maxFeesPerGas,
-        maxPriorityFeesPerGas,
-        Wei.ZERO,
-        Bytes.EMPTY,
-        null,
-        null,
-        null,
-        null,
-        null);
+    return new JsonCallParameter.JsonCallParameterBuilder()
+        .withFrom(Address.fromHexString("0x0"))
+        .withTo(Address.fromHexString("0x0"))
+        .withGas(0L)
+        .withGasPrice(gasPrice)
+        .withMaxFeePerGas(maxFeesPerGas)
+        .withMaxPriorityFeePerGas(maxPriorityFeesPerGas)
+        .withValue(Wei.ZERO)
+        .withInput(Bytes.EMPTY)
+        .build();
   }
 
   private JsonRpcRequestContext ethCallRequest(
@@ -466,8 +495,17 @@ public class EthCallTest {
         new JsonRpcRequest("2.0", "eth_call", new Object[] {callParameter, blockNumberInHex}));
   }
 
+  private JsonRpcRequestContext ethCallRequestWithStateOverrides(
+      final CallParameter callParameter,
+      final String blockNumberInHex,
+      final AccountOverrideMap overrides) {
+    return new JsonRpcRequestContext(
+        new JsonRpcRequest(
+            "2.0", "eth_call", new Object[] {callParameter, blockNumberInHex, overrides}));
+  }
+
   private void mockTransactionProcessorSuccessResult(final JsonRpcResponse jsonRpcResponse) {
-    when(transactionSimulator.process(any(), any(), any(), any(), any()))
+    when(transactionSimulator.process(any(), eq(Optional.empty()), any(), any(), any(), any()))
         .thenReturn(Optional.of(jsonRpcResponse));
   }
 }

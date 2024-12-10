@@ -16,6 +16,7 @@ package org.hyperledger.besu.ethereum.eth.manager.snap;
 
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.ProtocolContext;
+import org.hyperledger.besu.ethereum.core.Synchronizer;
 import org.hyperledger.besu.ethereum.eth.manager.EthMessages;
 import org.hyperledger.besu.ethereum.eth.messages.snap.AccountRangeMessage;
 import org.hyperledger.besu.ethereum.eth.messages.snap.ByteCodesMessage;
@@ -26,12 +27,13 @@ import org.hyperledger.besu.ethereum.eth.messages.snap.GetTrieNodesMessage;
 import org.hyperledger.besu.ethereum.eth.messages.snap.SnapV1;
 import org.hyperledger.besu.ethereum.eth.messages.snap.StorageRangeMessage;
 import org.hyperledger.besu.ethereum.eth.messages.snap.TrieNodesMessage;
-import org.hyperledger.besu.ethereum.eth.sync.DefaultSynchronizer;
 import org.hyperledger.besu.ethereum.eth.sync.snapsync.SnapSyncConfiguration;
 import org.hyperledger.besu.ethereum.p2p.rlpx.wire.MessageData;
 import org.hyperledger.besu.ethereum.proof.WorldStateProofProvider;
 import org.hyperledger.besu.ethereum.rlp.BytesValueRLPOutput;
+import org.hyperledger.besu.ethereum.rlp.RLP;
 import org.hyperledger.besu.ethereum.trie.CompactEncoding;
+import org.hyperledger.besu.ethereum.trie.MerkleTrie;
 import org.hyperledger.besu.ethereum.trie.diffbased.bonsai.BonsaiWorldStateProvider;
 import org.hyperledger.besu.ethereum.trie.diffbased.bonsai.storage.BonsaiWorldStateKeyValueStorage;
 import org.hyperledger.besu.ethereum.worldstate.FlatDbMode;
@@ -47,7 +49,6 @@ import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -82,7 +83,6 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
   static final Hash HASH_LAST = Hash.wrap(Bytes32.leftPad(Bytes.fromHexString("FF"), (byte) 0xFF));
 
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
-  private final AtomicLong listenerId = new AtomicLong();
   private final EthMessages snapMessages;
 
   private final WorldStateStorageCoordinator worldStateStorageCoordinator;
@@ -99,7 +99,8 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
       final SnapSyncConfiguration snapConfig,
       final EthMessages snapMessages,
       final WorldStateStorageCoordinator worldStateStorageCoordinator,
-      final ProtocolContext protocolContext) {
+      final ProtocolContext protocolContext,
+      final Synchronizer synchronizer) {
     this.snapServerEnabled =
         Optional.ofNullable(snapConfig)
             .map(SnapSyncConfiguration::isSnapServerEnabled)
@@ -109,14 +110,9 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
     this.protocolContext = Optional.of(protocolContext);
     registerResponseConstructors();
 
-    // subscribe to initial sync completed events to start/stop snap server:
-    this.protocolContext
-        .flatMap(ProtocolContext::getSynchronizer)
-        .filter(z -> z instanceof DefaultSynchronizer)
-        .map(DefaultSynchronizer.class::cast)
-        .ifPresentOrElse(
-            z -> this.listenerId.set(z.subscribeInitialSync(this)),
-            () -> LOGGER.warn("SnapServer created without reference to sync status"));
+    // subscribe to initial sync completed events to start/stop snap server,
+    // not saving the listenerId since we never need to unsubscribe.
+    synchronizer.subscribeInitialSync(this);
   }
 
   /**
@@ -225,35 +221,43 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
         .addArgument(() -> asLogHash(range.endKeyHash()))
         .log();
     try {
+      if (range.worldStateRootHash().equals(Hash.EMPTY_TRIE_HASH)) {
+        return AccountRangeMessage.create(new HashMap<>(), List.of(MerkleTrie.EMPTY_TRIE_NODE));
+      }
       return worldStateStorageProvider
           .apply(range.worldStateRootHash())
           .map(
               storage -> {
                 LOGGER.trace("obtained worldstate in {}", stopWatch);
-                StatefulPredicate shouldContinuePredicate =
-                    new StatefulPredicate(
+                ResponseSizePredicate responseSizePredicate =
+                    new ResponseSizePredicate(
                         "account",
                         stopWatch,
                         maxResponseBytes,
                         (pair) -> {
-                          var rlpOutput = new BytesValueRLPOutput();
-                          rlpOutput.startList();
-                          rlpOutput.writeBytes(pair.getFirst());
-                          rlpOutput.writeRLPBytes(pair.getSecond());
-                          rlpOutput.endList();
-                          return rlpOutput.encodedSize();
+                          Bytes bytes =
+                              AccountRangeMessage.toSlimAccount(RLP.input(pair.getSecond()));
+                          return Hash.SIZE + bytes.size();
                         });
 
+                final Bytes32 endKeyBytes = range.endKeyHash();
+                var shouldContinuePredicate =
+                    new ExceedingPredicate(
+                        new EndKeyExceedsPredicate(endKeyBytes).and(responseSizePredicate));
+
                 NavigableMap<Bytes32, Bytes> accounts =
-                    storage.streamFlatAccounts(
-                        range.startKeyHash(), range.endKeyHash(), shouldContinuePredicate);
+                    storage.streamFlatAccounts(range.startKeyHash(), shouldContinuePredicate);
 
                 if (accounts.isEmpty() && shouldContinuePredicate.shouldContinue.get()) {
+                  var fromNextHash =
+                      range.endKeyHash().compareTo(range.startKeyHash()) >= 0
+                          ? range.endKeyHash()
+                          : range.startKeyHash();
                   // fetch next account after range, if it exists
                   LOGGER.debug(
                       "found no accounts in range, taking first value starting from {}",
-                      asLogHash(range.endKeyHash()));
-                  accounts = storage.streamFlatAccounts(range.endKeyHash(), UInt256.MAX_VALUE, 1L);
+                      asLogHash(fromNextHash));
+                  accounts = storage.streamFlatAccounts(fromNextHash, UInt256.MAX_VALUE, 1L);
                 }
 
                 final var worldStateProof =
@@ -327,8 +331,8 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
               storage -> {
                 LOGGER.trace("obtained worldstate in {}", stopWatch);
                 // reusable predicate to limit by rec count and bytes:
-                var statefulPredicate =
-                    new StatefulPredicate(
+                var responsePredicate =
+                    new ResponseSizePredicate(
                         "storage",
                         stopWatch,
                         maxResponseBytes,
@@ -360,9 +364,12 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
                     new WorldStateProofProvider(new WorldStateStorageCoordinator(storage));
 
                 for (var forAccountHash : range.hashes()) {
+                  var predicate =
+                      new ExceedingPredicate(
+                          new EndKeyExceedsPredicate(endKeyBytes).and(responsePredicate));
                   var accountStorages =
                       storage.streamFlatStorages(
-                          Hash.wrap(forAccountHash), startKeyBytes, endKeyBytes, statefulPredicate);
+                          Hash.wrap(forAccountHash), startKeyBytes, predicate);
 
                   //// address partial range queries that return empty
                   if (accountStorages.isEmpty() && isPartialRange) {
@@ -382,7 +389,7 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
 
                   // if a partial storage range was requested, or we interrupted storage due to
                   // request limits, send proofs:
-                  if (isPartialRange || !statefulPredicate.shouldGetMore()) {
+                  if (isPartialRange || !predicate.shouldGetMore()) {
                     // send a proof for the left side range origin
                     proofNodes.addAll(
                         worldStateProof.getStorageProofRelatedNodes(
@@ -399,7 +406,7 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
                     }
                   }
 
-                  if (!statefulPredicate.shouldGetMore()) {
+                  if (!predicate.shouldGetMore()) {
                     break;
                   }
                 }
@@ -456,8 +463,9 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
         } else {
           Optional<Bytes> optCode = worldStateStorageCoordinator.getCode(Hash.wrap(codeHash), null);
           if (optCode.isPresent()) {
-            if (sumListBytes(codeBytes) + optCode.get().size() > maxResponseBytes
-                || stopWatch.getTime() > StatefulPredicate.MAX_MILLIS_PER_REQUEST) {
+            if (!codeBytes.isEmpty()
+                && (sumListBytes(codeBytes) + optCode.get().size() > maxResponseBytes
+                    || stopWatch.getTime() > ResponseSizePredicate.MAX_MILLIS_PER_REQUEST)) {
               break;
             }
             codeBytes.add(optCode.get());
@@ -508,33 +516,49 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
                   // first element in paths is account
                   if (triePath.size() == 1) {
                     // if there is only one path, presume it should be compact encoded account path
-                    var optStorage =
-                        storage.getTrieNodeUnsafe(CompactEncoding.decode(triePath.get(0)));
-                    if (optStorage.isPresent()) {
-                      if (sumListBytes(trieNodes) + optStorage.get().size() > maxResponseBytes
-                          || stopWatch.getTime() > StatefulPredicate.MAX_MILLIS_PER_REQUEST) {
-                        break;
-                      }
-                      trieNodes.add(optStorage.get());
+                    final Bytes location = CompactEncoding.decode(triePath.get(0));
+                    var optStorage = storage.getTrieNodeUnsafe(location);
+                    if (optStorage.isEmpty() && location.isEmpty()) {
+                      optStorage = Optional.of(MerkleTrie.EMPTY_TRIE_NODE);
+                    }
+                    var trieNode = optStorage.orElse(Bytes.EMPTY);
+                    if (!trieNodes.isEmpty()
+                        && (sumListBytes(trieNodes) + trieNode.size() > maxResponseBytes
+                            || stopWatch.getTime()
+                                > ResponseSizePredicate.MAX_MILLIS_PER_REQUEST)) {
+                      break;
+                    }
+                    trieNodes.add(trieNode);
+                  } else {
+                    // There must be at least one element in the path otherwise it is invalid
+                    if (triePath.isEmpty()) {
+                      LOGGER.debug("returned empty trie nodes message due to invalid path");
+                      return EMPTY_TRIE_NODES_MESSAGE;
                     }
 
-                  } else {
                     // otherwise the first element should be account hash, and subsequent paths
                     // are compact encoded account storage paths
 
-                    final Bytes accountPrefix = triePath.get(0);
+                    final Bytes32 accountPrefix = Bytes32.leftPad(triePath.getFirst());
+                    var optAccount = storage.getAccount(Hash.wrap(accountPrefix));
+                    if (optAccount.isEmpty()) {
+                      continue;
+                    }
 
                     List<Bytes> storagePaths = triePath.subList(1, triePath.size());
                     for (var path : storagePaths) {
+                      final Bytes location = CompactEncoding.decode(path);
                       var optStorage =
-                          storage.getTrieNodeUnsafe(
-                              Bytes.concatenate(accountPrefix, CompactEncoding.decode(path)));
-                      if (optStorage.isPresent()) {
-                        if (sumListBytes(trieNodes) + optStorage.get().size() > maxResponseBytes) {
-                          break;
-                        }
-                        trieNodes.add(optStorage.get());
+                          storage.getTrieNodeUnsafe(Bytes.concatenate(accountPrefix, location));
+                      if (optStorage.isEmpty() && location.isEmpty()) {
+                        optStorage = Optional.of(MerkleTrie.EMPTY_TRIE_NODE);
                       }
+                      var trieNode = optStorage.orElse(Bytes.EMPTY);
+                      if (!trieNodes.isEmpty()
+                          && sumListBytes(trieNodes) + trieNode.size() > maxResponseBytes) {
+                        break;
+                      }
+                      trieNodes.add(trieNode);
                     }
                   }
                 }
@@ -558,7 +582,39 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
     }
   }
 
-  static class StatefulPredicate implements Predicate<Pair<Bytes32, Bytes>> {
+  /**
+   * Predicate that doesn't immediately stop when the delegate predicate returns false, but instead
+   * sets a flag to stop after the current element is processed.
+   */
+  static class ExceedingPredicate implements Predicate<Pair<Bytes32, Bytes>> {
+    private final Predicate<Pair<Bytes32, Bytes>> delegate;
+    final AtomicBoolean shouldContinue = new AtomicBoolean(true);
+
+    public ExceedingPredicate(final Predicate<Pair<Bytes32, Bytes>> delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public boolean test(final Pair<Bytes32, Bytes> pair) {
+      final boolean result = delegate.test(pair);
+      return shouldContinue.getAndSet(result);
+    }
+
+    public boolean shouldGetMore() {
+      return shouldContinue.get();
+    }
+  }
+
+  /** Predicate that stops when the end key is exceeded. */
+  record EndKeyExceedsPredicate(Bytes endKey) implements Predicate<Pair<Bytes32, Bytes>> {
+
+    @Override
+    public boolean test(final Pair<Bytes32, Bytes> pair) {
+      return endKey.compareTo(Bytes.wrap(pair.getFirst())) > 0;
+    }
+  }
+
+  static class ResponseSizePredicate implements Predicate<Pair<Bytes32, Bytes>> {
     // default to a max of 4 seconds per request
     static final long MAX_MILLIS_PER_REQUEST = 4000;
 
@@ -568,24 +624,17 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
     final Function<Pair<Bytes32, Bytes>, Integer> encodingSizeAccumulator;
     final StopWatch stopWatch;
     final int maxResponseBytes;
-    // TODO: remove this hack,  10% is a fudge factor to account for the proof node size
-    final int maxResponseBytesFudgeFactor;
     final String forWhat;
 
-    StatefulPredicate(
+    ResponseSizePredicate(
         final String forWhat,
         final StopWatch stopWatch,
         final int maxResponseBytes,
         final Function<Pair<Bytes32, Bytes>, Integer> encodingSizeAccumulator) {
       this.stopWatch = stopWatch;
       this.maxResponseBytes = maxResponseBytes;
-      this.maxResponseBytesFudgeFactor = maxResponseBytes * 9 / 10;
       this.forWhat = forWhat;
       this.encodingSizeAccumulator = encodingSizeAccumulator;
-    }
-
-    public boolean shouldGetMore() {
-      return shouldContinue.get();
     }
 
     @Override
@@ -611,7 +660,7 @@ class SnapServer implements BesuEvents.InitialSyncCompletionListener {
       var underRecordLimit = recordLimit.addAndGet(1) <= MAX_ENTRIES_PER_REQUEST;
       var underByteLimit =
           byteLimit.accumulateAndGet(0, (cur, __) -> cur + encodingSizeAccumulator.apply(pair))
-              < maxResponseBytesFudgeFactor;
+              < maxResponseBytes;
       if (underRecordLimit && underByteLimit) {
         return true;
       } else {

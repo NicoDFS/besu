@@ -7,14 +7,13 @@ dependencies {
   implementation project(':datatypes')
   implementation project(':ethereum:core')
   implementation project(':ethereum:rlp')
+  implementation project(':ethereum:api')
   implementation project(':plugin-api')
   implementation 'com.google.auto.service:auto-service'
   implementation 'info.picocli:picocli'
 
   testImplementation 'org.assertj:assertj-core'
   testImplementation 'org.junit.jupiter:junit-jupiter'
-
-  testRuntimeOnly 'org.junit.vintage:junit-vintage-engine'
 }
 
 task testPluginsJar(type: Jar) {
@@ -24,7 +23,8 @@ task testPluginsJar(type: Jar) {
       'Specification-Title': archiveBaseName,
       'Specification-Version': project.version,
       'Implementation-Title': archiveBaseName,
-      'Implementation-Version': calculateVersion()
+      'Implementation-Version': calculateVersion(),
+      'Commit-Hash': getGitCommitDetails(40).hash
       )
   }
   from sourceSets.main.output

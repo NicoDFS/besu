@@ -14,8 +14,8 @@
  */
 package org.hyperledger.besu.consensus.clique;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Java6Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -32,11 +32,13 @@ import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
+import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.mainnet.HeaderValidationMode;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 
 import java.time.Instant;
 import java.util.List;
@@ -65,10 +67,13 @@ public class CliqueProtocolScheduleTest {
             config,
             new ForksSchedule<>(List.of()),
             NODE_KEY,
+            PrivacyParameters.DEFAULT,
             false,
             EvmConfiguration.DEFAULT,
-            MiningParameters.MINING_DISABLED,
-            new BadBlockManager());
+            MiningConfiguration.MINING_DISABLED,
+            new BadBlockManager(),
+            false,
+            new NoOpMetricsSystem());
 
     final ProtocolSpec homesteadSpec = protocolSchedule.getByBlockHeader(blockHeader(1));
     final ProtocolSpec tangerineWhistleSpec = protocolSchedule.getByBlockHeader(blockHeader(2));
@@ -89,10 +94,13 @@ public class CliqueProtocolScheduleTest {
                 GenesisConfigFile.DEFAULT.getConfigOptions(),
                 forksSchedule,
                 NODE_KEY,
+                PrivacyParameters.DEFAULT,
                 false,
                 EvmConfiguration.DEFAULT,
-                MiningParameters.MINING_DISABLED,
-                new BadBlockManager())
+                MiningConfiguration.MINING_DISABLED,
+                new BadBlockManager(),
+                false,
+                new NoOpMetricsSystem())
             .getByBlockHeader(blockHeader(0));
 
     assertThat(homestead.getName()).isEqualTo("Frontier");
@@ -113,10 +121,13 @@ public class CliqueProtocolScheduleTest {
                     genesisConfig,
                     new ForksSchedule<>(List.of()),
                     NODE_KEY,
+                    PrivacyParameters.DEFAULT,
                     false,
                     EvmConfiguration.DEFAULT,
-                    MiningParameters.MINING_DISABLED,
-                    new BadBlockManager()))
+                    MiningConfiguration.MINING_DISABLED,
+                    new BadBlockManager(),
+                    false,
+                    new NoOpMetricsSystem()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Epoch length in config must be greater than zero");
   }
@@ -133,10 +144,13 @@ public class CliqueProtocolScheduleTest {
                     genesisConfig,
                     new ForksSchedule<>(List.of()),
                     NODE_KEY,
+                    PrivacyParameters.DEFAULT,
                     false,
                     EvmConfiguration.DEFAULT,
-                    MiningParameters.MINING_DISABLED,
-                    new BadBlockManager()))
+                    MiningConfiguration.MINING_DISABLED,
+                    new BadBlockManager(),
+                    false,
+                    new NoOpMetricsSystem()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Epoch length in config must be greater than zero");
   }
@@ -157,10 +171,13 @@ public class CliqueProtocolScheduleTest {
             config,
             forksSchedule,
             NODE_KEY,
+            PrivacyParameters.DEFAULT,
             false,
             EvmConfiguration.DEFAULT,
-            MiningParameters.MINING_DISABLED,
-            new BadBlockManager());
+            MiningConfiguration.MINING_DISABLED,
+            new BadBlockManager(),
+            false,
+            new NoOpMetricsSystem());
 
     BlockHeader emptyFrontierParent =
         headerBuilder

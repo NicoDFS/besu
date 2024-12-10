@@ -32,13 +32,10 @@ import org.hyperledger.besu.ethereum.mainnet.TransactionValidationParams;
 import org.hyperledger.besu.ethereum.processing.TransactionProcessingResult;
 import org.hyperledger.besu.ethereum.referencetests.GeneralStateTestCaseEipSpec;
 import org.hyperledger.besu.ethereum.referencetests.GeneralStateTestCaseSpec;
-import org.hyperledger.besu.ethereum.referencetests.ReferenceTestBlockchain;
 import org.hyperledger.besu.ethereum.referencetests.ReferenceTestProtocolSchedules;
 import org.hyperledger.besu.ethereum.rlp.RLP;
-import org.hyperledger.besu.ethereum.vm.CachingBlockHashLookup;
 import org.hyperledger.besu.evm.account.Account;
 import org.hyperledger.besu.evm.log.Log;
-import org.hyperledger.besu.evm.operation.BlockHashOperation;
 import org.hyperledger.besu.evm.tracing.OperationTracer;
 import org.hyperledger.besu.evm.tracing.StandardJsonTracer;
 import org.hyperledger.besu.evm.worldstate.WorldUpdater;
@@ -54,30 +51,42 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Stopwatch;
-import com.google.common.base.Suppliers;
 import org.apache.tuweni.bytes.Bytes;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 
+/**
+ * This class, StateTestSubCommand, is a command-line interface (CLI) command that executes an
+ * Ethereum State Test. It implements the Runnable interface, meaning it can be used in a thread of
+ * execution.
+ *
+ * <p>The class is annotated with @CommandLine.Command, which is a PicoCLI annotation that
+ * designates this class as a command-line command. The annotation parameters define the command's
+ * name, description, whether it includes standard help options, and the version provider.
+ *
+ * <p>The command's functionality is defined in the run() method, which is overridden from the
+ * Runnable interface.
+ */
 @Command(
     name = COMMAND_NAME,
     description = "Execute an Ethereum State Test.",
     mixinStandardHelpOptions = true,
     versionProvider = VersionProvider.class)
 public class StateTestSubCommand implements Runnable {
+  /**
+   * The name of the command for the StateTestSubCommand. This constant is used as the name
+   * parameter in the @CommandLine.Command annotation. It defines the command name that users should
+   * enter on the command line to invoke this command.
+   */
   public static final String COMMAND_NAME = "state-test";
-
-  static final Supplier<ReferenceTestProtocolSchedules> referenceTestProtocolSchedules =
-      Suppliers.memoize(ReferenceTestProtocolSchedules::create);
 
   @SuppressWarnings({"FieldCanBeFinal"})
   @Option(
@@ -115,6 +124,10 @@ public class StateTestSubCommand implements Runnable {
   // picocli does it magically
   @Parameters private final List<Path> stateTestFiles = new ArrayList<>();
 
+  /**
+   * Default constructor for the StateTestSubCommand class. This constructor doesn't take any
+   * arguments and initializes the parentCommand to null. PicoCLI requires this constructor.
+   */
   @SuppressWarnings("unused")
   public StateTestSubCommand() {
     // PicoCLI requires this
@@ -214,7 +227,7 @@ public class StateTestSubCommand implements Runnable {
       }
 
       final BlockHeader blockHeader = spec.getBlockHeader();
-      final Transaction transaction = spec.getTransaction();
+      final Transaction transaction = spec.getTransaction(0);
       final ObjectNode summaryLine = objectMapper.createObjectNode();
       if (transaction == null) {
         if (parentCommand.showJsonAlloc || parentCommand.showJsonResults) {
@@ -240,7 +253,7 @@ public class StateTestSubCommand implements Runnable {
 
         final String forkName = fork == null ? spec.getFork() : fork;
         final ProtocolSchedule protocolSchedule =
-            referenceTestProtocolSchedules.get().getByName(forkName);
+            ReferenceTestProtocolSchedules.getInstance().getByName(forkName);
         if (protocolSchedule == null) {
           throw new UnsupportedForkException(forkName);
         }
@@ -251,31 +264,13 @@ public class StateTestSubCommand implements Runnable {
         final Stopwatch timer = Stopwatch.createStarted();
         // Todo: EIP-4844 use the excessBlobGas of the parent instead of BlobGas.ZERO
         final Wei blobGasPrice = protocolSpec.getFeeMarket().blobGasPricePerGas(BlobGas.ZERO);
-
-        BlockHashOperation.BlockHashLookup blockHashLookup =
-            protocolSpec
-                .getBlockHashProcessor()
-                .getBlockHashLookup(
-                    blockHeader, new ReferenceTestBlockchain(blockHeader.getNumber()));
-        if (blockHashLookup instanceof CachingBlockHashLookup) {
-          blockHashLookup =
-              (messageFrame, number) -> {
-                long lookback = messageFrame.getBlockValues().getNumber() - number;
-                if (lookback < 0 || lookback > BlockHashOperation.MAX_RELATIVE_BLOCK) {
-                  return Hash.ZERO;
-                } else {
-                  return Hash.hash(Bytes.wrap(Long.toString(number).getBytes(UTF_8)));
-                }
-              };
-        }
-
         final TransactionProcessingResult result =
             processor.processTransaction(
                 worldStateUpdater,
                 blockHeader,
                 transaction,
                 blockHeader.getCoinbase(),
-                blockHashLookup,
+                blockNumber -> Hash.hash(Bytes.wrap(Long.toString(blockNumber).getBytes(UTF_8))),
                 false,
                 TransactionValidationParams.processingBlock(),
                 tracer,
@@ -329,7 +324,9 @@ public class StateTestSubCommand implements Runnable {
               "validationError",
               "Exception '" + spec.getExpectException() + "' was expected but did not occur");
         }
-
+        if (!result.getValidationResult().isValid()) {
+          summaryLine.put("error", result.getValidationResult().getErrorMessage());
+        }
         if (parentCommand.showJsonAlloc) {
           EvmToolCommand.dumpWorldState(worldState, parentCommand.out);
         }

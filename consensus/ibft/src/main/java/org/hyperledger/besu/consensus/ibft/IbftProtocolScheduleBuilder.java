@@ -21,13 +21,15 @@ import org.hyperledger.besu.consensus.common.bft.BaseBftProtocolScheduleBuilder;
 import org.hyperledger.besu.consensus.common.bft.BftExtraDataCodec;
 import org.hyperledger.besu.consensus.common.bft.BftProtocolSchedule;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.mainnet.BlockHeaderValidator;
 import org.hyperledger.besu.ethereum.mainnet.feemarket.BaseFeeMarket;
 import org.hyperledger.besu.ethereum.mainnet.feemarket.FeeMarket;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.plugin.services.MetricsSystem;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /** Defines the protocol behaviours for a blockchain using a BFT consensus mechanism. */
@@ -44,8 +46,11 @@ public class IbftProtocolScheduleBuilder extends BaseBftProtocolScheduleBuilder 
    * @param isRevertReasonEnabled the is revert reason enabled
    * @param bftExtraDataCodec the bft extra data codec
    * @param evmConfiguration the evm configuration
-   * @param miningParameters the mining parameters
+   * @param miningConfiguration the mining parameters
    * @param badBlockManager the cache to use to keep invalid blocks
+   * @param isParallelTxProcessingEnabled indicates whether parallel transaction is enabled
+   * @param metricsSystem A metricSystem instance to be able to expose metrics in the underlying
+   *     calls
    * @return the protocol schedule
    */
   public static BftProtocolSchedule create(
@@ -55,8 +60,10 @@ public class IbftProtocolScheduleBuilder extends BaseBftProtocolScheduleBuilder 
       final boolean isRevertReasonEnabled,
       final BftExtraDataCodec bftExtraDataCodec,
       final EvmConfiguration evmConfiguration,
-      final MiningParameters miningParameters,
-      final BadBlockManager badBlockManager) {
+      final MiningConfiguration miningConfiguration,
+      final BadBlockManager badBlockManager,
+      final boolean isParallelTxProcessingEnabled,
+      final MetricsSystem metricsSystem) {
     return new IbftProtocolScheduleBuilder()
         .createProtocolSchedule(
             config,
@@ -65,8 +72,10 @@ public class IbftProtocolScheduleBuilder extends BaseBftProtocolScheduleBuilder 
             isRevertReasonEnabled,
             bftExtraDataCodec,
             evmConfiguration,
-            miningParameters,
-            badBlockManager);
+            miningConfiguration,
+            badBlockManager,
+            isParallelTxProcessingEnabled,
+            metricsSystem);
   }
 
   /**
@@ -76,8 +85,11 @@ public class IbftProtocolScheduleBuilder extends BaseBftProtocolScheduleBuilder 
    * @param forksSchedule the forks schedule
    * @param bftExtraDataCodec the bft extra data codec
    * @param evmConfiguration the evm configuration
-   * @param miningParameters the mining parameters
+   * @param miningConfiguration the mining parameters
    * @param badBlockManager the cache to use to keep invalid blocks
+   * @param isParallelTxProcessingEnabled indicates whether parallel transaction is enabled.
+   * @param metricsSystem A metricSystem instance to be able to expose metrics in the underlying
+   *     calls
    * @return the protocol schedule
    */
   public static BftProtocolSchedule create(
@@ -85,8 +97,10 @@ public class IbftProtocolScheduleBuilder extends BaseBftProtocolScheduleBuilder 
       final ForksSchedule<BftConfigOptions> forksSchedule,
       final BftExtraDataCodec bftExtraDataCodec,
       final EvmConfiguration evmConfiguration,
-      final MiningParameters miningParameters,
-      final BadBlockManager badBlockManager) {
+      final MiningConfiguration miningConfiguration,
+      final BadBlockManager badBlockManager,
+      final boolean isParallelTxProcessingEnabled,
+      final MetricsSystem metricsSystem) {
     return create(
         config,
         forksSchedule,
@@ -94,8 +108,10 @@ public class IbftProtocolScheduleBuilder extends BaseBftProtocolScheduleBuilder 
         false,
         bftExtraDataCodec,
         evmConfiguration,
-        miningParameters,
-        badBlockManager);
+        miningConfiguration,
+        badBlockManager,
+        isParallelTxProcessingEnabled,
+        metricsSystem);
   }
 
   @Override
@@ -105,6 +121,9 @@ public class IbftProtocolScheduleBuilder extends BaseBftProtocolScheduleBuilder 
         Optional.of(feeMarket).filter(FeeMarket::implementsBaseFee).map(BaseFeeMarket.class::cast);
 
     return IbftBlockHeaderValidationRulesetFactory.blockHeaderValidator(
-        config.getBlockPeriodSeconds(), baseFeeMarket);
+        config.getBlockPeriodMilliseconds() > 0
+            ? Duration.ofMillis(config.getBlockPeriodMilliseconds())
+            : Duration.ofSeconds(config.getBlockPeriodSeconds()),
+        baseFeeMarket);
   }
 }

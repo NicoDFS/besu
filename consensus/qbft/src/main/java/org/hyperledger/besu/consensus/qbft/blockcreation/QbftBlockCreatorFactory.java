@@ -20,12 +20,10 @@ import org.hyperledger.besu.consensus.common.ForksSchedule;
 import org.hyperledger.besu.consensus.common.bft.BftExtraData;
 import org.hyperledger.besu.consensus.common.bft.BftExtraDataCodec;
 import org.hyperledger.besu.consensus.common.bft.blockcreation.BftBlockCreatorFactory;
-import org.hyperledger.besu.consensus.qbft.QbftContext;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.ethereum.ProtocolContext;
-import org.hyperledger.besu.ethereum.blockcreation.BlockCreator;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.eth.manager.EthScheduler;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPool;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
@@ -54,7 +52,7 @@ public class QbftBlockCreatorFactory extends BftBlockCreatorFactory<QbftConfigOp
       final ProtocolContext protocolContext,
       final ProtocolSchedule protocolSchedule,
       final ForksSchedule<QbftConfigOptions> forksSchedule,
-      final MiningParameters miningParams,
+      final MiningConfiguration miningParams,
       final Address localAddress,
       final BftExtraDataCodec bftExtraDataCodec,
       final EthScheduler ethScheduler) {
@@ -70,29 +68,13 @@ public class QbftBlockCreatorFactory extends BftBlockCreatorFactory<QbftConfigOp
   }
 
   @Override
-  public BlockCreator create(final BlockHeader parentHeader, final int round) {
-    final BlockCreator blockCreator = super.create(parentHeader, round);
-    final QbftContext qbftContext = protocolContext.getConsensusContext(QbftContext.class);
-    if (qbftContext.getPkiBlockCreationConfiguration().isEmpty()) {
-      return blockCreator;
-    } else {
-      return new PkiQbftBlockCreator(
-          blockCreator,
-          qbftContext.getPkiBlockCreationConfiguration().get(),
-          bftExtraDataCodec,
-          parentHeader,
-          protocolSchedule);
-    }
-  }
-
-  @Override
   public Bytes createExtraData(final int round, final BlockHeader parentHeader) {
     if (forksSchedule.getFork(parentHeader.getNumber() + 1L).getValue().isValidatorContractMode()) {
       // vote and validators will come from contract instead of block
       final BftExtraData extraData =
           new BftExtraData(
               ConsensusHelpers.zeroLeftPad(
-                  miningParameters.getExtraData(), BftExtraDataCodec.EXTRA_VANITY_LENGTH),
+                  miningConfiguration.getExtraData(), BftExtraDataCodec.EXTRA_VANITY_LENGTH),
               Collections.emptyList(),
               Optional.empty(),
               round,

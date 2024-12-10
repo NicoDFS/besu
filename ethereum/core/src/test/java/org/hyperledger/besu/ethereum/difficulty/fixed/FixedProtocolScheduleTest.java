@@ -20,9 +20,10 @@ import org.hyperledger.besu.config.GenesisConfigFile;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 
 import org.junit.jupiter.api.Test;
 
@@ -35,8 +36,10 @@ public class FixedProtocolScheduleTest {
         FixedDifficultyProtocolSchedule.create(
             GenesisConfigFile.fromResource("/dev.json").getConfigOptions(),
             EvmConfiguration.DEFAULT,
-            MiningParameters.MINING_DISABLED,
-            new BadBlockManager());
+            MiningConfiguration.MINING_DISABLED,
+            new BadBlockManager(),
+            false,
+            new NoOpMetricsSystem());
 
     final BlockHeaderTestFixture headerBuilder = new BlockHeaderTestFixture();
 
@@ -46,21 +49,21 @@ public class FixedProtocolScheduleTest {
             schedule
                 .getByBlockHeader(blockHeader(0))
                 .getDifficultyCalculator()
-                .nextDifficulty(1, parentHeader, null))
+                .nextDifficulty(1, parentHeader))
         .isEqualTo(FixedDifficultyCalculators.DEFAULT_DIFFICULTY);
 
     assertThat(
             schedule
                 .getByBlockHeader(blockHeader(500))
                 .getDifficultyCalculator()
-                .nextDifficulty(1, parentHeader, null))
+                .nextDifficulty(1, parentHeader))
         .isEqualTo(FixedDifficultyCalculators.DEFAULT_DIFFICULTY);
 
     assertThat(
             schedule
                 .getByBlockHeader(blockHeader(500_000))
                 .getDifficultyCalculator()
-                .nextDifficulty(1, parentHeader, null))
+                .nextDifficulty(1, parentHeader))
         .isEqualTo(FixedDifficultyCalculators.DEFAULT_DIFFICULTY);
   }
 

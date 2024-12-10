@@ -70,7 +70,7 @@ import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockBody;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
-import org.hyperledger.besu.ethereum.core.MiningParameters;
+import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Util;
 import org.hyperledger.besu.ethereum.mainnet.DefaultProtocolSchedule;
@@ -79,6 +79,7 @@ import org.hyperledger.besu.ethereum.mainnet.ProtocolScheduleBuilder;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpecAdapters;
 import org.hyperledger.besu.ethereum.p2p.rlpx.wire.MessageData;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 import org.hyperledger.besu.util.Subscribers;
 
 import java.math.BigInteger;
@@ -118,6 +119,7 @@ public class IbftBlockHeightManagerTest {
   @Mock private RoundTimer roundTimer;
   @Mock private FutureRoundProposalMessageValidator futureRoundProposalMessageValidator;
   @Mock private ValidatorMulticaster validatorMulticaster;
+  @Mock private BlockHeader parentHeader;
 
   @Captor private ArgumentCaptor<MessageData> sentMessageArgCaptor;
 
@@ -157,7 +159,7 @@ public class IbftBlockHeightManagerTest {
     lenient().when(finalState.getQuorum()).thenReturn(3);
     when(finalState.getValidatorMulticaster()).thenReturn(validatorMulticaster);
     lenient()
-        .when(blockCreator.createBlock(anyLong()))
+        .when(blockCreator.createBlock(anyLong(), any()))
         .thenReturn(
             new BlockCreationResult(
                 createdBlock, new TransactionSelectionResults(), new BlockCreationTiming()));
@@ -178,13 +180,15 @@ public class IbftBlockHeightManagerTest {
     final ProtocolScheduleBuilder protocolScheduleBuilder =
         new ProtocolScheduleBuilder(
             new StubGenesisConfigOptions(),
-            BigInteger.ONE,
+            Optional.empty(),
             ProtocolSpecAdapters.create(0, Function.identity()),
             new PrivacyParameters(),
             false,
             EvmConfiguration.DEFAULT,
-            MiningParameters.MINING_DISABLED,
-            new BadBlockManager());
+            MiningConfiguration.MINING_DISABLED,
+            new BadBlockManager(),
+            false,
+            new NoOpMetricsSystem());
 
     ProtocolSchedule protocolSchedule =
         new BftProtocolSchedule(
@@ -207,7 +211,8 @@ public class IbftBlockHeightManagerTest {
                   messageFactory,
                   messageTransmitter,
                   roundTimer,
-                  bftExtraDataCodec);
+                  bftExtraDataCodec,
+                  parentHeader);
             });
 
     lenient()
@@ -225,7 +230,8 @@ public class IbftBlockHeightManagerTest {
                   messageFactory,
                   messageTransmitter,
                   roundTimer,
-                  bftExtraDataCodec);
+                  bftExtraDataCodec,
+                  parentHeader);
             });
   }
 

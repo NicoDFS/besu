@@ -22,9 +22,10 @@ import org.hyperledger.besu.config.JsonGenesisConfigOptions;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.mainnet.MainnetProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
-import org.hyperledger.besu.evm.internal.EvmConfiguration;
+import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 
 import java.io.IOException;
+import java.util.Optional;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
@@ -35,11 +36,13 @@ public class ProtocolScheduleFixture {
   public static final ProtocolSchedule MAINNET =
       MainnetProtocolSchedule.fromConfig(
           getMainnetConfigOptions(),
-          PrivacyParameters.DEFAULT,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          MiningConfiguration.newDefault(),
+          new BadBlockManager(),
           false,
-          EvmConfiguration.DEFAULT,
-          MiningParameters.newDefault(),
-          new BadBlockManager());
+          new NoOpMetricsSystem());
 
   private static GenesisConfigOptions getMainnetConfigOptions() {
     // this method avoids reading all the alloc accounts when all we want is the "config" section

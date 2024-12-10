@@ -18,11 +18,14 @@ import static org.hyperledger.besu.services.pipeline.PipelineBuilder.createPipel
 
 import org.hyperledger.besu.ethereum.api.jsonrpc.RpcMethod;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequestContext;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.exception.InvalidJsonRpcParameters;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.TraceBlock.ChainUpdater;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.BlockParameter;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.JsonRpcParameter.JsonRpcParameterException;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.TraceTypeParameter;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.processor.Tracer;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.processor.TransactionTrace;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.RpcErrorType;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.results.TraceReplayResult;
 import org.hyperledger.besu.ethereum.api.query.BlockchainQueries;
 import org.hyperledger.besu.ethereum.api.util.ArrayNodeWrapper;
@@ -36,7 +39,7 @@ import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.ethereum.vm.DebugOperationTracer;
 import org.hyperledger.besu.metrics.BesuMetricCategory;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
-import org.hyperledger.besu.metrics.prometheus.PrometheusMetricsSystem;
+import org.hyperledger.besu.plugin.services.MetricsSystem;
 import org.hyperledger.besu.plugin.services.metrics.Counter;
 import org.hyperledger.besu.plugin.services.metrics.LabelledMetric;
 import org.hyperledger.besu.services.pipeline.Pipeline;
@@ -54,13 +57,23 @@ import org.slf4j.LoggerFactory;
 
 public class TraceReplayBlockTransactions extends AbstractBlockParameterMethod {
   private static final Logger LOG = LoggerFactory.getLogger(TraceReplayBlockTransactions.class);
-  private final ProtocolSchedule protocolSchedule;
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private final ProtocolSchedule protocolSchedule;
+  private final LabelledMetric<Counter> outputCounter;
 
   public TraceReplayBlockTransactions(
-      final ProtocolSchedule protocolSchedule, final BlockchainQueries queries) {
+      final ProtocolSchedule protocolSchedule,
+      final BlockchainQueries queries,
+      final MetricsSystem metricsSystem) {
     super(queries);
     this.protocolSchedule = protocolSchedule;
+    this.outputCounter =
+        metricsSystem.createLabelledCounter(
+            BesuMetricCategory.BLOCKCHAIN,
+            "transactions_tracereplayblock_pipeline_processed_total",
+            "Number of transactions processed for each block",
+            "step",
+            "action");
   }
 
   @Override
@@ -70,14 +83,24 @@ public class TraceReplayBlockTransactions extends AbstractBlockParameterMethod {
 
   @Override
   protected BlockParameter blockParameter(final JsonRpcRequestContext request) {
-    return request.getRequiredParameter(0, BlockParameter.class);
+    try {
+      return request.getRequiredParameter(0, BlockParameter.class);
+    } catch (JsonRpcParameterException e) {
+      throw new InvalidJsonRpcParameters(
+          "Invalid block parameter (index 0)", RpcErrorType.INVALID_BLOCK_PARAMS, e);
+    }
   }
 
   @Override
   protected ArrayNode resultByBlockNumber(
       final JsonRpcRequestContext request, final long blockNumber) {
-    final TraceTypeParameter traceTypeParameter =
-        request.getRequiredParameter(1, TraceTypeParameter.class);
+    final TraceTypeParameter traceTypeParameter;
+    try {
+      traceTypeParameter = request.getRequiredParameter(1, TraceTypeParameter.class);
+    } catch (JsonRpcParameterException e) {
+      throw new InvalidJsonRpcParameters(
+          "Invalid trace type parameter (index 1)", RpcErrorType.INVALID_TRACE_TYPE_PARAMS, e);
+    }
 
     LOG.trace(
         "Received RPC rpcName={} block={} traceType={}",
@@ -118,14 +141,7 @@ public class TraceReplayBlockTransactions extends AbstractBlockParameterMethod {
               final ChainUpdater chainUpdater = new ChainUpdater(traceableState);
 
               final TransactionSource transactionSource = new TransactionSource(block);
-              final LabelledMetric<Counter> outputCounter =
-                  new PrometheusMetricsSystem(BesuMetricCategory.DEFAULT_METRIC_CATEGORIES, false)
-                      .createLabelledCounter(
-                          BesuMetricCategory.BLOCKCHAIN,
-                          "transactions_tracereplayblock_pipeline_processed_total",
-                          "Number of transactions processed for each block",
-                          "step",
-                          "action");
+
               final DebugOperationTracer debugOperationTracer =
                   new DebugOperationTracer(new TraceOptions(false, false, true), false);
               final ExecuteTransactionStep executeTransactionStep =

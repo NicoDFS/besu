@@ -24,12 +24,14 @@ solidity {
   resolvePackages = false
   // TODO: remove the forced version, when DEV network is upgraded to support latest forks
   version '0.8.19'
+  evmVersion 'london'
 }
 
 dependencies {
   api 'org.slf4j:slf4j-api'
 
   implementation project(':crypto:algorithms')
+  implementation project(':ethereum:eth')
 
   testImplementation project(':acceptance-tests:dsl')
   testImplementation project(':acceptance-tests:test-plugins')
@@ -41,6 +43,7 @@ dependencies {
   testImplementation project(':ethereum:api')
   testImplementation project(':ethereum:core')
   testImplementation project(path: ':ethereum:core', configuration: 'testSupportArtifacts')
+  testImplementation project(':ethereum:eth')
   testImplementation project(':ethereum:p2p')
   testImplementation project(':ethereum:permissioning')
   testImplementation project(':ethereum:rlp')
@@ -67,20 +70,19 @@ dependencies {
   testImplementation 'io.opentracing:opentracing-api'
   testImplementation 'io.opentracing:opentracing-util'
   testImplementation 'io.vertx:vertx-core'
-  testImplementation 'junit:junit'
   testImplementation 'org.apache.commons:commons-compress'
   testImplementation 'org.apache.logging.log4j:log4j-core'
   testImplementation 'io.tmio:tuweni-crypto'
   testImplementation 'org.assertj:assertj-core'
   testImplementation 'org.awaitility:awaitility'
   testImplementation 'org.junit.jupiter:junit-jupiter'
-  testImplementation 'org.testcontainers:testcontainers'
   testImplementation 'org.web3j:abi'
   testImplementation 'org.web3j:besu'
   testImplementation 'org.web3j:core'
   testImplementation 'org.wiremock:wiremock'
-
-  testRuntimeOnly 'org.junit.vintage:junit-vintage-engine'
+  testImplementation 'com.google.dagger:dagger'
+  testAnnotationProcessor 'com.google.dagger:dagger-compiler'
+  testImplementation project(path: ':acceptance-tests:tests:shanghai')
 }
 
 test.enabled = false
@@ -104,37 +106,9 @@ task acceptanceTest(type: Test) {
   setSystemProperties(test.getSystemProperties())
   systemProperty 'acctests.runBesuAsProcess', 'true'
   systemProperty 'java.security.properties', "${buildDir}/resources/test/acceptanceTesting.security"
-  mustRunAfter rootProject.subprojects*.test
+  def javaProjects = rootProject.subprojects - project(':platform')
+  mustRunAfter javaProjects.test
   description = 'Runs ALL Besu acceptance tests (mainnet and non-mainnet).'
-  group = 'verification'
-
-  jvmArgs "-XX:ErrorFile=${buildDir}/jvmErrorLogs/java_err_pid%p.log"
-
-  testLogging {
-    exceptionFormat = 'full'
-    showStackTraces = true
-    showStandardStreams = Boolean.getBoolean('acctests.showStandardStreams')
-    showExceptions = true
-    showCauses = true
-  }
-
-  doFirst { mkdir "${buildDir}/jvmErrorLogs" }
-}
-task acceptanceTestMainnet(type: Test) {
-  inputs.property "integration.date", LocalTime.now() // so it runs at every invocation
-  exclude '**/bft/**'
-  exclude '**/clique/**'
-  exclude '**/permissioning/**'
-  exclude '**/privacy/**'
-
-  useJUnitPlatform {}
-
-  dependsOn(rootProject.installDist)
-  setSystemProperties(test.getSystemProperties())
-  systemProperty 'acctests.runBesuAsProcess', 'true'
-  systemProperty 'java.security.properties', "${buildDir}/resources/test/acceptanceTesting.security"
-  mustRunAfter rootProject.subprojects*.test
-  description = 'Runs MAINNET Besu acceptance tests (excluding permissioning, privacy and some other stable features).'
   group = 'verification'
 
   jvmArgs "-XX:ErrorFile=${buildDir}/jvmErrorLogs/java_err_pid%p.log"
@@ -153,6 +127,8 @@ task acceptanceTestMainnet(type: Test) {
 task acceptanceTestNotPrivacy(type: Test) {
   inputs.property "integration.date", LocalTime.now() // so it runs at every invocation
   exclude '**/privacy/**'
+  exclude '**/permissioning/**'
+  exclude '**/bftsoak/**'
 
   useJUnitPlatform {}
 
@@ -160,8 +136,9 @@ task acceptanceTestNotPrivacy(type: Test) {
   setSystemProperties(test.getSystemProperties())
   systemProperty 'acctests.runBesuAsProcess', 'true'
   systemProperty 'java.security.properties', "${buildDir}/resources/test/acceptanceTesting.security"
-  mustRunAfter rootProject.subprojects*.test
-  description = 'Runs MAINNET Besu acceptance tests (excluding privacy since they run nightly, and are being refactored).'
+  def javaProjects = rootProject.subprojects - project(':platform')
+  mustRunAfter javaProjects.test
+  description = 'Runs MAINNET Besu acceptance tests (excluding specific non-mainnet suites).'
   group = 'verification'
 
   jvmArgs "-XX:ErrorFile=${buildDir}/jvmErrorLogs/java_err_pid%p.log"
@@ -188,7 +165,8 @@ task acceptanceTestCliqueBft(type: Test) {
   setSystemProperties(test.getSystemProperties())
   systemProperty 'acctests.runBesuAsProcess', 'true'
   systemProperty 'java.security.properties', "${buildDir}/resources/test/acceptanceTesting.security"
-  mustRunAfter rootProject.subprojects*.test
+  def javaProjects = rootProject.subprojects - project(':platform')
+  mustRunAfter javaProjects.test
   description = 'Runs Clique and BFT Besu acceptance tests.'
   group = 'verification'
 
@@ -205,18 +183,21 @@ task acceptanceTestCliqueBft(type: Test) {
   doFirst { mkdir "${buildDir}/jvmErrorLogs" }
 }
 
-task acceptanceTestPrivacy(type: Test) {
+task acceptanceTestBftSoak(type: Test) {
   inputs.property "integration.date", LocalTime.now() // so it runs at every invocation
-  include '**/privacy/**'
+  include '**/bftsoak/**'
 
   useJUnitPlatform {}
 
   dependsOn(rootProject.installDist)
   setSystemProperties(test.getSystemProperties())
   systemProperty 'acctests.runBesuAsProcess', 'true'
+  // Set to any time > 60 minutes to run the soak test for longer
+  // systemProperty 'acctests.soakTimeMins', '120'
   systemProperty 'java.security.properties', "${buildDir}/resources/test/acceptanceTesting.security"
-  mustRunAfter rootProject.subprojects*.test
-  description = 'Runs Privacy Besu acceptance tests.'
+  def javaProjects = rootProject.subprojects - project(':platform')
+  mustRunAfter javaProjects.test
+  description = 'Runs BFT soak test.'
   group = 'verification'
 
   jvmArgs "-XX:ErrorFile=${buildDir}/jvmErrorLogs/java_err_pid%p.log"
@@ -224,7 +205,7 @@ task acceptanceTestPrivacy(type: Test) {
   testLogging {
     exceptionFormat = 'full'
     showStackTraces = true
-    showStandardStreams = Boolean.getBoolean('acctests.showStandardStreams')
+    showStandardStreams = true
     showExceptions = true
     showCauses = true
   }
@@ -242,7 +223,8 @@ task acceptanceTestPermissioning(type: Test) {
   setSystemProperties(test.getSystemProperties())
   systemProperty 'acctests.runBesuAsProcess', 'true'
   systemProperty 'java.security.properties', "${buildDir}/resources/test/acceptanceTesting.security"
-  mustRunAfter rootProject.subprojects*.test
+  def javaProjects = rootProject.subprojects - project(':platform')
+  mustRunAfter javaProjects.test
   description = 'Runs Permissioning Besu acceptance tests.'
   group = 'verification'
 
@@ -257,33 +239,4 @@ task acceptanceTestPermissioning(type: Test) {
   }
 
   doFirst { mkdir "${buildDir}/jvmErrorLogs" }
-}
-
-// temporary solution to get a list of tests
-// Gradle >8.3 has a supported test dry-run option to achieve the same result
-task listAcceptanceTestNotPrivacy {
-  doLast {
-    def testExecutionSpec = tasks.getByName("acceptanceTestNotPrivacy") as Test
-
-    def processor = new org.gradle.api.internal.tasks.testing.TestClassProcessor() {
-        void startProcessing(org.gradle.api.internal.tasks.testing.TestResultProcessor processor) {}
-        void stop() {}
-        void stopNow() {}
-
-        void processTestClass(org.gradle.api.internal.tasks.testing.TestClassRunInfo info) {
-          def splitName = info.getTestClassName().split("\\.");
-          def testClassName = splitName[splitName.length-1];
-          if(testClassName.endsWith("Test") && !testClassName.startsWith("Abstract")) {
-            println(info.getTestClassName())
-          }
-        }
-      }
-
-    def detector = new org.gradle.api.internal.tasks.testing.detection.DefaultTestClassScanner(testExecutionSpec.getCandidateClassFiles(), testExecutionSpec.getTestFramework().getDetector()?.tap {
-      setTestClasses(testExecutionSpec.getTestClassesDirs().getFiles())
-      setTestClasspath(Collections.unmodifiableSet(testExecutionSpec.getClasspath().getFiles()))
-    }, processor)
-
-    detector.run()
-  }
 }
