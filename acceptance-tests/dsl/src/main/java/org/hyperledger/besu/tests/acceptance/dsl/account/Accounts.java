@@ -44,6 +44,24 @@ public class Accounts {
     return richBenefactorTwo;
   }
 
+  /**
+   * Creates a new account with just a name (for testing purposes).
+   *
+   * @param name The name identifier for the account
+   * @return The created account
+   */
+  public Account createAccount(final String name) {
+    // For tests, we don't need password protection
+    return createAccount(name, null);
+  }
+
+  /**
+   * Creates a new account with a name and password.
+   *
+   * @param name The name identifier for the account
+   * @param password The password to encrypt the private key
+   * @return The created account
+   */
   public Account createAccount(final String name, final String password) {
     return Account.create(eth, name, password);
   }
