@@ -20,8 +20,24 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 /**
- * Command to create a new Ethereum account. Creates a new private key and stores it in an encrypted
- * keystore file.
+ * Command line subcommand to create a new Ethereum account. This command generates a new private
+ * key and stores it in an encrypted keystore file compatible with MetaMask and other Ethereum
+ * wallets.
+ *
+ * <p>The command requires two parameters:
+ *
+ * <ul>
+ *   <li>--name: A name identifier for the account
+ *   <li>--password: A password to encrypt the private key
+ * </ul>
+ *
+ * <p>The command will:
+ *
+ * <ul>
+ *   <li>Generate a new private key
+ *   <li>Create an encrypted keystore file in Web3 Secret Storage format
+ *   <li>Output the Ethereum address and keystore file location
+ * </ul>
  */
 @Command(
     name = "create-account",
@@ -31,14 +47,32 @@ import picocli.CommandLine.Option;
     mixinStandardHelpOptions = true)
 public class CreateAccountCommand implements Runnable {
 
-  /** The name identifier for the account. */
+  /**
+   * Constructs a new CreateAccountCommand instance.
+   *
+   * <p>This command is used to generate new Ethereum accounts with encrypted keystore files.
+   */
+  public CreateAccountCommand() {
+    // Default constructor
+  }
+
+  /**
+   * The name identifier for the account.
+   *
+   * <p>This name is used as part of the keystore filename and can include spaces and special
+   * characters.
+   */
   @Option(
       names = {"--name"},
       description = "Name identifier for the account. Can include spaces and special characters.",
       required = true)
   private String name;
 
-  /** The password used to encrypt the private key. */
+  /**
+   * The password used to encrypt the private key in the keystore file.
+   *
+   * <p>For passwords containing special characters, they should be enclosed in single quotes.
+   */
   @Option(
       names = {"--password"},
       description =
@@ -47,8 +81,15 @@ public class CreateAccountCommand implements Runnable {
   private String password;
 
   /**
-   * Executes the account creation command. Generates a new private key and saves it to an encrypted
-   * keystore file.
+   * Executes the account creation command.
+   *
+   * <p>This method:
+   *
+   * <ul>
+   *   <li>Generates a new private key
+   *   <li>Saves it to an encrypted keystore file
+   *   <li>Outputs the account address and keystore location
+   * </ul>
    */
   @Override
   public void run() {
