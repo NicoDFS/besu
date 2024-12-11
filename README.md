@@ -31,6 +31,22 @@ If you have any questions, queries or comments, [Besu channel on Discord] is the
 
 To install the Besu binary, follow [these instructions](https://besu.hyperledger.org/public-networks/get-started/install/binary-distribution).    
 
+## Account Management
+
+### Create Account
+Besu provides a command-line tool to create new Ethereum accounts:
+
+```bash
+besu create-account --name="MyAccount" --password="myPassword"
+```
+
+This command:
+- Generates a new Ethereum private key
+- Creates an encrypted keystore file (Web3 Secret Storage format)
+- Outputs the Ethereum address and keystore location
+
+The generated keystore is compatible with MetaMask and other Ethereum wallets. Store your password and keystore file securely - they are required to access your account.
+
 ## Besu Developers
 
 * [Contributing Guidelines]
